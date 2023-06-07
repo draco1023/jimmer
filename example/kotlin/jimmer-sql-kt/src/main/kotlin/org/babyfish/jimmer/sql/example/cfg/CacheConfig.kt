@@ -5,6 +5,7 @@ import org.babyfish.jimmer.kt.toImmutableProp
 import org.babyfish.jimmer.meta.ImmutableProp
 import org.babyfish.jimmer.meta.ImmutableType
 import org.babyfish.jimmer.spring.cache.CaffeineBinder
+import org.babyfish.jimmer.spring.cache.RedisCaches
 import org.babyfish.jimmer.spring.cache.RedisHashBinder
 import org.babyfish.jimmer.spring.cache.RedisValueBinder
 import org.babyfish.jimmer.sql.cache.Cache
@@ -12,13 +13,12 @@ import org.babyfish.jimmer.sql.cache.CacheFactory
 import org.babyfish.jimmer.sql.cache.chain.*
 import org.babyfish.jimmer.sql.example.model.BookStore
 import org.babyfish.jimmer.sql.example.model.common.TenantAware
+import org.babyfish.jimmer.sql.kt.cache.KCacheFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.redis.connection.RedisConnectionFactory
 import org.springframework.data.redis.core.RedisTemplate
-import org.springframework.data.redis.serializer.RedisSerializer
-import org.springframework.data.redis.serializer.StringRedisSerializer
 import java.time.Duration
 
 // -----------------------------
@@ -30,29 +30,14 @@ import java.time.Duration
 class CacheConfig {
 
     @Bean
-    fun rawDataRedisTemplate(
-        connectionFactory: RedisConnectionFactory
-    ): RedisTemplate<String, ByteArray> =
-        RedisTemplate<String, ByteArray>().apply {
-
-            setConnectionFactory(connectionFactory)
-
-            val nopSerializer = object : RedisSerializer<ByteArray?> {
-                override fun serialize(t: ByteArray?): ByteArray? = t
-                override fun deserialize(bytes: ByteArray?): ByteArray? = bytes
-            }
-            keySerializer = StringRedisSerializer.UTF_8
-            valueSerializer = nopSerializer
-            hashKeySerializer = StringRedisSerializer.UTF_8
-            hashValueSerializer = nopSerializer
-        }
-
-    @Bean
     fun cacheFactory(
-        redisTemplate: RedisTemplate<String, ByteArray>,
+        connectionFactory: RedisConnectionFactory,
         objectMapper: ObjectMapper
-    ): CacheFactory =
-        object : CacheFactory {
+    ): CacheFactory {
+
+        val redisTemplate = RedisCaches.cacheRedisTemplate(connectionFactory)
+
+        return object : KCacheFactory {
 
             // Id -> Object
             override fun createObjectCache(type: ImmutableType): Cache<*, *>? =
@@ -92,6 +77,7 @@ class CacheConfig {
                     Duration.ofHours(1)
                 )
         }
+    }
 
     companion object {
 
