@@ -58,6 +58,10 @@ tasks.getByName<Test>("test") {
     useJUnitPlatform()
 }
 
+tasks.withType<Javadoc>{
+    options.encoding = "UTF-8"
+}
+
 tasks.withType<JavaCompile> {
     /*
      * it must be compiled with parameters
