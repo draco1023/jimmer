@@ -1,14 +1,24 @@
 ---
 sidebar_position: 3
-title: Draft代理
+title: Draft
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-## 使用AnnotationProcessor/KSP plugin
+之前的文档我们发现
 
-用户定义不可变数据接口
+-   用户定义了`Book`类型，例子代码就可以使用`BookDraft`类型
+
+-   用户定义了`TreeNode`类型，例子代码就可以使用`TreeNodeDraft`类型
+
+这些名称以`Draft`结尾且和用户定义的类型一一对应的类型，叫Draft类型
+
+## 使用预编译器
+
+### 定义TreeNode
+
+用户定先义不可变数据接口，这里无需使用ORM实体注解`@Entity`，使用非ORM的注解`@Immutable`即可达到演示目的。
 
 <Tabs groupId="language">
 <TabItem value="java" label="Java">
@@ -55,55 +65,18 @@ interface TreeNode {
 </TabItem>
 </Tabs>
 
-由于gradle配置文件中存在Annotation Processor/KSP plugin
+### 生成TreeNodeDraft
 
-<Tabs groupId="language">
-<TabItem value="java" label="For java project">
+要自动生成`TreeNodeDraft`需要启用预编译器
 
-```groovy title="build.gradle"
-dependencies {
+-   Java: 使用AnnotationProcessor `jimmer-apt`
 
-    implementation 'org.babyfish.jimmer:jimmer-core:0.7.107'
+-   Kotlin: 使用KSP `jimmer-ksp`
 
-    // highlight-next-line
-    annotationProcessor 'org.babyfish.jimmer:jimmer-apt:0.7.107'
-    // This annotation processor generates source code
-    // for INTERFACEs marked by
-    // `@org.babyfish.jimmer.Immutable` or
-    // `@org.babyfish.jimmer.sql.Entity`
-}
-```
-
-</TabItem>
-<TabItem value="kotlin" label="For kotlin project">
-
-```kotlin title="build.gradle.kts"
-plugins {
-    id("com.google.devtools.ksp") version "1.7.10-1.0.6"
-    ... other code...
-}
-dependencies {
-
-    implementation("org.babyfish.jimmer:jimmer-core-kotlin:0.7.107")
-    // highlight-next-line
-    ksp("org.babyfish.jimmer:jimmer-ksp:0.7.107")
-    // The ksp plugin generates source code
-    // for INTERFACEs marked by
-    // `@org.babyfish.jimmer.Immutable` or
-    // `@org.babyfish.jimmer.sql.Entity`
-}
-
-kotlin {
-    sourceSets.main {
-        kotlin.srcDir("build/generated/ksp/main/kotlin")
-    }
-}
-```
-
-</TabItem>
-</Tabs>
-
-此Annotation Processor/KSP plugin将生成如下一个名称为`TreeNodeDraft`的接口类型：
+:::info
+如何使用`jimmer-apt/jimmer-ksp`、以及遇到可能的问题后该如何处理，
+在[生成代码](../overview/get-started/generate-code)中有非常详细的介绍，本文不再赘述。
+:::
 
 <Tabs groupId="language">
 <TabItem value="java" label="Java">
@@ -280,10 +253,6 @@ public fun MutableList<TreeNodeDraft>.addBy(
     </TabItem>
     </Tabs>
 
-:::note
-这两种用法的完整的代码已经在[jimmer-core初体验](./usage)中已经被示范，所以，这里省略了lambda表达式内部的代码，不做重复粘贴。
-:::
-
 ## 标量属性
 
 `TreeNode.name`是一个标量属性。`TreeNodeDraft`会定义如下一个`setter方法/可写属性`
@@ -443,12 +412,13 @@ public interface TreeNodeDraft : TreeNode {
 </TabItem>
 </Tabs>
 
-`parent(false)`和`parent()`等价，具备以下两个问题：
+Java的`parent(false)`和Kotlin的`parent`，具备以下两个问题：
 
 - 如果draft对象的属性`parent`未被设置，访问它会导致异常
+
 - 如果draft对象的属性`parent`被设置为null，访问它会返回null，null无法支持进一步修改。
 
-`parent(true)`可以解决以上的问题，如果上述任何一种情况满足，就自动创建并设置一个关联对象，然后允许用户修改。这是一个实用的功能，尤其是从头创建对象时。
+`parent(true)`可以解决以上的问题，如果上述任何一种情况满足，就自动创建并设置一个关联对象，然后允许用户修改。这是一个非常实用的功能，尤其是从头创建对象时。
 
 <Tabs groupId="language">
 <TabItem value="java" label="Java">
@@ -725,8 +695,6 @@ TreeNode newTreeNode = TreeNodeDraft.$
 诚然，当参数为 true 时，childNodes(boolean) 能够在未指定 childNodes 属性时自动创建集合。
 
 然而，当参数为 false 时，同样也很有用。由于此方法的返回类型是`List<TreeNodeDraft>`而不是`List<TreeNode>`，因此上一个示例中对开发人员不友好的代码将不再存在。
-
-这个案例与[jimmer-core初体验](./usage)中的一样。
 :::
 
 </TabItem>
