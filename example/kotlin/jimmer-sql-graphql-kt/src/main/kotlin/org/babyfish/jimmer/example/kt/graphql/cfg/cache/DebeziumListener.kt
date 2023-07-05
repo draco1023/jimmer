@@ -1,4 +1,4 @@
-package org.babyfish.jimmer.sql.example.cfg.cache
+package org.babyfish.jimmer.example.kt.graphql.cfg.cache
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
