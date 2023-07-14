@@ -12,8 +12,10 @@ interface KSaveCommandDsl {
 
     fun <E: Any> setKeyProps(vararg keyProps: KProperty1<E, *>)
 
+    @Deprecated("Will be deleted in 1.0")
     fun setAutoAttachingAll()
 
+    @Deprecated("Will be deleted in 1.0")
     fun setAutoAttaching(prop: KProperty1<*, *>)
 
     fun setAutoIdOnlyTargetChecking(prop: KProperty1<*, *>)
@@ -25,4 +27,6 @@ interface KSaveCommandDsl {
     fun setAppendOnly(prop: KProperty1<*, *>)
 
     fun setDissociateAction(prop: KProperty1<*, *>, action: DissociateAction)
+
+    fun setPessimisticLock(pessimisticLock: Boolean = true)
 }
