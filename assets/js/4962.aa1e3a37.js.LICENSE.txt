@@ -1,0 +1,19 @@
+/*! @gera2ld/jsx-dom v2.1.1 | ISC License */
+
+/*! js-yaml 4.1.0 https://github.com/nodeca/js-yaml @license MIT */
+
+/*! markmap-common v0.14.2 | MIT License */
+
+/*! markmap-lib v0.14.4 | MIT License */
+
+/*! markmap-view v0.14.4 | MIT License */
+
+/**
+ * @license React
+ * react-is.production.min.js
+ *
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
