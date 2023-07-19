@@ -26,11 +26,12 @@ import { ViewMore } from '@site/src/components/ViewMore';
 <tr>
 <td>
 
-```
+```sh
 +-Food
 |
 |
 |
+# highlight-next-line
 +-----Meat(忽略子节点)
 |
 \-----Bread(忽略子节点)
@@ -39,7 +40,7 @@ import { ViewMore } from '@site/src/components/ViewMore';
 </td>
 <td>
 
-```
+```sh
 +-Food
 |
 +-----Drinks(忽略子节点)
@@ -60,14 +61,6 @@ import { ViewMore } from '@site/src/components/ViewMore';
 
 -   对于`Meat`而言，在旧数据结构中存在，但在新数据中不存在，对应的操作叫做脱勾操作。
 
-:::info
-在本文中，为了尽可能简化生成的SQL，让我们聚焦于关联本身和脱勾操作
-
--   所有被保存对象一律只指定id属性
-
--   对聚合根对象一律明确指定UPDATE_ONLY模式 *(调用update方法)*
-:::
-
 脱勾针对两种数据
 
 -   中间表数据
@@ -75,6 +68,14 @@ import { ViewMore } from '@site/src/components/ViewMore';
 -   子表数据
 
 接下来，我们讨论这两种脱勾操作。
+
+:::info
+在本文中，为了尽可能简化生成的SQL，让我们聚焦于关联本身和脱勾操作
+
+-   所有被保存对象一律只指定id属性
+
+-   聚合根对象的保存模式一律明确指定为UPDATE_ONLY *(本采用调用update方法的写法)*
+:::
 
 ## 脱勾中间表数据
 
@@ -141,9 +142,10 @@ sqlClient.update(
 <tr>
 <td>
 
-```
+```sh
 +-Book(id=3)
 |
+# highlight-next-line
 +-----Author(id=1)
 |
 \-----Author(id=2)
@@ -154,7 +156,7 @@ sqlClient.update(
 </td>
 <td>
 
-```
+```sh
 +-Book(id=3)
 |
 |
@@ -177,7 +179,7 @@ sqlClient.update(
 
 -   `Book-3`和`Author-1`之间的关联需要被删除，这就是脱勾操作
 
-如果中间表外键为真 *(请参见[真假外键](../../mapping/base/foreignkey))*，Jimmer无需检查用户指定的`authorId`是否合法，生成的SQL是最简单的，只有三条
+最终生成三条SQL
 
 1.  查询`Book-3`对应了哪些`Author`对象
 
@@ -214,7 +216,7 @@ sqlClient.update(
 
 此操作针对直接给予外键的一对多关联。
 
-`BOOK`表有一个指向`BOOK_STORE`表的外键字段`STORE_ID`，形成多对一关系。这个多对一关联被映射成了属性`Book.store`，反过来的一对多关联被映射成了一对多关联`BookStore.books`。
+`BOOK`表有一个指向`BOOK_STORE`表的外键字段`STORE_ID`，形成多对一关系。这个多对一关联被映射成了属性`Book.store`，反过来的一对多关联被映射成了属性`BookStore.books`。
 
 如果数据库中某个父对象 *(本例的`BookStore`)* 持有某些子对象 *(本例的`Book`)*，但是用户期望覆盖的父对象不再继续持有某些子对象，将会导致这些子对象被脱勾。
 
@@ -224,7 +226,7 @@ sqlClient.update(
 
 -   NONE *(默认)*: 不支持脱勾操作，通过抛出异常阻止操作
 
--   SET_NULL: 把被脱勾的子对象的外建设置为null。前提是子对象的多对一关联属性是nullable的；否则尝试此配置将会导致异常
+-   SET_NULL: 把被脱勾的子对象的外键设置为null。前提是子对象的多对一关联属性是nullable的；否则尝试此配置将会导致异常
 
 -   DELETE: 将被脱勾的子对象删除
 
@@ -298,12 +300,10 @@ sqlClient.update(
     <TabItem value="kotlin" label="Kotlin">
 
     ```kotlin
-    sqlClient
-        .entities
-        .saveCommand(book)
+    sqlClient.save(book) {
         // highlight-next-line
         .setDissociateAction(Book::store, DissociateAction.SET_NULL)
-        .execute()
+    }
     ```
 
     </TabItem>
@@ -371,13 +371,15 @@ sqlClient.update(
 <tr>
 <td>
 
-```
+```sh
 +-BookStore(id=2)
 |
 +-----Book(id=10)
 |
+# highlight-next-line
 +-----Book(id=11)
 |
+# highlight-next-line
 \-----Book(id=12)
 
 
@@ -386,7 +388,7 @@ sqlClient.update(
 </td>
 <td>
 
-```
+```sh
 +-BookStore(id=2)
 |
 +-----Book(id=10)
@@ -441,7 +443,7 @@ sqlClient.update(
             )
         ```
 
-    2.  将隶属`BookStore-2`且id不是9或10的所有书籍 *(本例为`Book-11`和``Book-11``)* 的外建清空。
+    2.  将隶属`BookStore-2`且id不是9或10的所有书籍 *(本例为`Book-11`和``Book-11``)* 的外键清空。
 
         ```sql
         update BOOK
@@ -454,6 +456,10 @@ sqlClient.update(
                 ? /* 9 */, ? /* 10 */
             )
         ```
+
+        :::note
+        请注意SQL中的`not`
+        :::
 
 -   `DELETE`
 
@@ -484,6 +490,10 @@ sqlClient.update(
                 ? /* 9 */, ? /* 10 */
             )
         ```
+
+        :::note
+        请注意SQL中的`not`
+        :::
 
     3.  在删除`Book-11`和`Book-12`之前，先清理它们和和`Author`之间的多对多关联
 
@@ -518,7 +528,7 @@ sqlClient.update(
 
 -   明确指定聚合根对象的处理模式为`UPDATE_ONLY` *(调用`update`而非`save`)*
 
--   关联对象全部是只有id的对象。事实上，你可以随意改变关联对象的格式，比如
+-   关联对象全部是只有id的短关联对象。事实上，你可以随意改变关联对象的格式，比如
 
     -   不指定`id`属性，而指定`key`属性 *(<ViewMore buttonText="短关联" variant="text"><ShortAssociation/></ViewMore>的另外一种表达方式)*
 

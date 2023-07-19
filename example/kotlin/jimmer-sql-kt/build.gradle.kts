@@ -9,10 +9,11 @@ plugins {
 	id("com.google.devtools.ksp") version "1.7.10-1.0.6"
 }
 
-val jimmerVersion = "0.7.118"
+val jimmerVersion = "0.7.121"
 
 group = "org.babyfish.jimmer.example.kt"
 version = jimmerVersion
+
 java.sourceCompatibility = JavaVersion.VERSION_1_8
 
 repositories {
