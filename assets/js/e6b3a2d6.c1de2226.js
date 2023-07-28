@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunkdocusaurus_code=self.webpackChunkdocusaurus_code||[]).push([[3797],{68286:function(s){s.exports=JSON.parse('{"permalink":"/jimmer/blog/tags/docusaurus","page":1,"postsPerPage":10,"totalPages":1,"totalCount":4,"blogDescription":"Blog","blogTitle":"Blog"}')}}]);
