@@ -1,0 +1,309 @@
+---
+sidebar_position: 1
+title: Project Introduction
+---
+
+import { ViewMore } from '@site/src/components/ViewMore';
+import { MindMap } from '@site/src/components/MindMap';
+import { LongAssociation } from '@site/src/components/LongAssociation';
+import { ObjectFetcher } from '@site/src/components/HomepageFeatures/ObjectFetcher';
+import { SaveCommand } from '@site/src/components/HomepageFeatures/SaveCommand';
+import { CacheConsistencyPanel } from '@site/src/components/HomepageFeatures/CacheConsistency';
+import { DynamicJoinProblemPanel } from '@site/src/components/HomepageFeatures/DynamicJoinProblem';
+import { Communication } from '@site/src/components/HomepageFeatures/Communication';
+import { Button } from "@mui/material";
+import DtoExplosion from '@site/static/img/dto-explosion.png'; 
+import ObjectCache from '@site/static/img/object-cache.jpeg';
+import AssociationCache from '@site/static/img/association-cache.png';
+import CalculatedCache from '@site/static/img/calculated-cache.png';
+import MultiViewCache from '@site/static/img/multi-view-cache.png';
+
+:::warning
+The original low-quality documentation is being completely rewritten and will eventually become high-quality documentation.
+
+However, after several months of hard work, only the Chinese part of the rewriting work has been completed, and the re-translation of the English document has not yet been completed.
+
+Now that the translation of English documents has only started, we will speed up the translation process. Before that, you can read [Old english document](../old-en)
+:::
+
+## Project positioning
+
+Jimmer is a revolutionary ORM for Java and Kotlin, and a complete integration solution based on it, including a powerful cache management mechanism.
+
+At present, there are many Java-based relational database upper-layer technical solutions, including ORM style and non-ORM style. There are so many such solutions that Jimmer doesn't want to repeat them.
+
+In fact, CRUD for the database is only the most basic and simple part of the actual project, and there are other pain points that have always plagued developers, which are more complex and cumbersome than simple CRUD.
+
+Jimmer collects most of the common and cumbersome problems in business project development and provides a complete set of comprehensive solutions.
+
+:::tip
+ORM is just Jimmer's entry point, not the whole story.
+:::
+
+:::note
+As a systematic solution, Jimmer is not another simple data CRUD solution. However, through deliberate and creative and disruptive design, Jimmer has a very high `benefit/cost` ratio.
+
+If the reader has experience with any ORM* (such as JPA)*, it will be particularly difficult to get started with Jimmer.
+
+Whether you have ORM experience or not, after you complete your Jimmer learning journey, you will find that the benefits you have gained are enormous.
+:::
+
+## Pain points
+
+As mentioned earlier, completing CRUD access to the database is only the most basic and simple part of the actual project, and there are other pain points that have been plaguing developers. Here are some common pain points:
+
+1.  DTO explosion problem
+
+    Even for the same data type *(aggregate root)*, different business functions expect different data formats to be queried, which often leads to project needing to define a large number of DTO types<ViewMore buttonText="DTO explosion" variant="text"><img src={DtoExplosion}/></ViewMore>。
+
+    :::info
+    The number of DTO types is large, although they are different from each other, they often have a high degree of similarity, and the redundancy is very high.
+    
+    Especially for mobile phone applications, the UI interface is severely fragmented due to the limited screen size, and even for the same data type * (aggregate root)*, different UI interfaces will have different emphasis, which further aggravates the situation.
+    :::
+
+    There are many types of DTO with high redundancy, and just defining these types can already make the system bloated and difficult to maintain. At the business code implementation level, it also makes traditional solutions *(whether ORM or non-ORM)* inconvenient to handle, such as:
+
+    -   Traditional ORM schemes represented by JPA/Hibernate
+
+        This type of solution, while convenient, lacks flexibility.
+
+        Even considering JPA2.1's [Entity Graph](https://www.baeldung.com/jpa-entity-graph), flexibility is limited, especially if business scenarios only require a part of of the properties of certain entity objects.
+
+        Finally, in order to cope with the ever-changing flexibility, especially the flexibility of only a part of the properties of the object, developers often choose to query only a part of the properties of the object and manually convert to DTO types, which will go against the original intention of ORM to pursue convenience and fail to reflect the value of ORM.
+
+        :::info
+        To compensate for the lack of flexibility in traditional ORMs, developers often need to find ways to make some workarounds, which in turn undermine the original purpose of ORM: convenience.
+        :::
+
+        :::note
+        This is one of the common arguments against ORM opponents, and there is a right and legitimate side to the view that ORM tried to replace SQL but did not achieve its goal.
+        :::
+
+    -   Non-ORM schemes represented by MyBatis
+    
+        Such methods are flexible, but the problem of duplication of effort is serious.
+        
+        In such technical solutions, developers often need to define a large number of similar but different 'Result Mappers' in the face of various DTO types of queries, and even some manual data stitching operations when necessary, which represents a very heavy workload.
+
+        :::info
+        This solution has absolute flexibility and control* (it can do very little work for you, many times developers write much code by themselves, of course, it is flexible)*, but at the cost of a lot of work. The team's R&D capabilities are directly reflected in the size of the number of people and communication costs.
+        :::
+
+    :::tip
+    Unleashing the flexibility of ORM through innovation to form a new solution that combines the convenience of ORM with the flexibility of MyBatis is one of Jimmer's core values.
+    :::
+
+2.  Complex form problem
+
+    Many times, the data structure that the client needs to save is not a flat object, but <ViewMore buttonText="data structure with some complexity" variant="text"><LongAssociation/></ViewMore>. It would be tedious for developers to compare the differences between client data structures and existing data and perform appropriate additions, deletions, and modifications.
+        
+    Therefore, the format of the data structure that different business functions can save for the same aggregate root type should be diversified, and should not be solidified through configuration at the ORM level.
+
+3.  cache
+
+    - Whether to use caching should be absolutely transparent to developers, and the introduction of caching should not increase the complexity of business code, reduce code quality and maintainability, and should be as simple as pure SQL projects.
+
+    - The cache should not only have the simplest object cache, but also <ViewMore buttonText="Association cache" variant="text"><img src={AssociationCache}/></ViewMore> and <ViewMore buttonText="Computational cache" variant="text"><img src={CalculatedCache}/></ViewMore>
+
+    - The global filtering capability represented by the permission system often allows different users to see different data, so it should also be <ViewMore buttonText="Let different users see different caches" variant="text"><img src={MultiViewCache}/></ViewMore>
+
+    - The most troublesome problem of cache consistency maintenance <ViewMore buttonText="should be solved by the underlying solution" title="Automatic cache consistency" variant="text"><CacheConsistencyPanel/></ViewMore>, as fully automated as possible, rather than penetrating into the business code and solved by the developer.
+
+4.  The client is automatically docked
+
+    The server-side service should automatically generate client-side code (such as TypeScript) for the client (such as a web frontend).
+
+    The server side is the producer, and developers want to see a simplified API and programming model because it means less work to implement; Clients are consumers, and developers want to see the full API and programming model because it means they're comfortable using themselves. The traditional approach of making the server-side and client-side APIs and programming models exactly the same needs to be changed.
+
+5.  Microservice data stitching
+
+In a microservices system, databases are fragmented. Querying different parts of data from different microservices and then stitching them back as a whole is cumbersome and high-frequency, and should be hidden and automated by the underlying solution.
+
+## Revolutionary features
+
+To solve these pain points, Jimmer offers a lot of disruptive features.
+
+### 1. Query arbitrarily shaped data structures
+
+The flexibility of GraphQL which must be accessed remotely via HTTP to gain , has become a ubiquitous universal local code behavior, which can be considered as the GraphQLization of ORM.
+
+This feature also addresses a drawback of GraphQL: it does not support recursive queries for self-associated properties.
+
+<ObjectFetcher/>&nbsp;<Button href="../query/object-fetcher" size="small" variant="outlined"> go and see</Button>
+
+### 2. Save arbitrarily shaped data structures
+
+- The shape of the saved data structure should be made by the developer at will, rather than using a fixed configuration on the entity as in a traditional ORM * (e.g. the cascade parameter of the '@OneToMany' annotation in JPA)*
+
+- It should be like <a href="https://react.dev/learn">React</a> or <a href="https://vuejs.org/">Vue</a> in the web domain, the developer can give the data structure to cover, and the framework will find the 'DIFF' and perform the SQL operation.
+
+<SaveCommand/>&nbsp;<Button href="../mutation/save-command" size="small" variant="outlined"> go and take a look</Button>
+
+### 3. Cache arbitrarily shaped data structures
+
+This is a very important feature of Jimmer, whose caching mechanism is very powerful and completely transparent to business code.
+
+:::note
+In my long-term experience in technical management, I have found that most development teams ensure the simplicity and maintainability of code for database-only projects. However, once the caching system was introduced, the maintainability of the project decreased dramatically.
+
+Therefore, Jimmer introduced this set of cache management mechanism that is both powerful and zero-intruding on business code, while fully enjoying the caching mechanism, making business code as simple as simple and easy to maintain as database-only projects.
+:::
+
+This caching mechanism supports the following important concepts
+
+- <ViewMore buttonText="Object Cache" variant="text"><img src={ObjectCache}/></ViewMore>、<ViewMore buttonText="Association Cache" variant="text"><img src={AssociationCache}/></ViewMore> and <ViewMore buttonText="Computational Cache" variant="text"><img src={CalculatedCache}/></ViewMore>
+
+- <ViewMore buttonText="MultiView Cache" variant="text"><img src={MultiViewCache}/></ViewMore>, different users see different caches, often in combination with permission systems
+
+- <ViewMore buttonText="Automatically maintain cache coherency" variant="text"><CacheConsistencyPanel/></ViewMore>
+
+<Button href="../cache" size="small" variant="outlined"> go and take a look</Button>
+
+### 4. Dynamic table joins
+
+Jimmer's DSL is not a mechanical translation of SQL, and its original 'dynamic table joining' fills a gap in the industry, no matter how complex the dynamic query can be easily written.
+
+:::note
+The lack of 'dynamic table connection' is a gap in the industry and the reason that the Jimmer project was created
+:::
+
+<ViewMore buttonText="Brief understanding" title="Problems with missing dynamic table joins" variant="outlined"><DynamicJoinProblemPanel/></ViewMore>&nbsp;<Button href="../query/dynamic-join" size="small" variant="outlined">Go check it out</Button>
+
+### 5. Front-end and back-end docking
+
+For REST services, client code (such as TypeScript) is generated for the client (such as a web frontend).
+
+Note that unlike other technical solutions that automatically generate client-side code, the programming models of the server and the client are different.
+
+- As the producer, the programming model of the server side has been simplified *(eliminating the DTO explosion)*, which greatly reduces the implementation cost
+
+- The client, as a consumer, adopts a complete programming model *(reproducing the DTO explosion)* and has a good development experience to use
+
+In this way, both the server and the client get the programming model that best suits them
+
+<Communication/>&nbsp;<Button href="../spring/client" size="small" variant="outlined">go and see</Button>
+
+### 6. Smart pagination
+
+- Extremely simple
+
+Developers only need to write queries that query all data before paging, and queries that query the total number of rows of data and query page data will be automatically generated. So, Jimmer's paginated queries will make you feel easier than ever.
+
+- Fully optimized
+
+Jimmer fully optimizes paginated queries at the SQL level
+
+<Button href="../query/paging" size="small" variant="outlined"> go to see</Button>
+
+### 7. Remote association
+
+In a microservices system, databases are fragmented. Querying different parts of data from different microservices and then stitching them back as a whole is cumbersome and high-frequency, and should be hidden and automated by the underlying solution.
+
+<Button href="../spring/spring-cloud" size="small" variant="outlined"> go and take a look</Button>
+
+## All function points
+
+<MindMap initialExpandLevel={1}/>
+
+Scenario analogy
+Jimmer is a comprehensive solution with a lot of great features. Some of these features are original to Jimmer, and some are similar to some other technical systems, which can be understood by analogy to help users with relevant experience understand.
+
+The features that can be compared with other similar technical systems are:
+
+<table>
+<thead>
+<tr>
+<th>Jimmer Feature Point</th>
+<th>Similar Solutions</th>
+<th>Necessary Explanation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Query arbitrary shaped data structures</td>
+<td><a href="https://graphql.org/)">GraphQL</a></td>
+<td>
+
+-   Unlike GraphQL, which serves as a protocol for HTTP interface exposure, Jimmer extends this capability to APIs of an ORM, which can be called locally everywhere. *(Of course, you can also choose to use Jimmer's ability to quickly expose GraphQL)*
+
+-   Jimmer can perform recursive queries on self associated properties
+
+</td>
+</tr>
+<tr>
+<td>
+
+[Save arbitrary shaped data structures](../mutation/save-command)
+
+</td>
+<td><a href="https://react.dev/learn">React</a>或<a href="https://vuejs.org/">Vue</a>的Virtual DOM diff</td>
+<td>
+
+There are essential differences between the Save directive and the save approach of other ORM frameworks.
+
+Taking JPA/Hibernate as an example, whether a scalar property of an object need to be saved is controlled by [Column.insertable](https://docs.oracle.com/javaee/7/api/javax/persistence/Column.html#insertable--) and [Column. updatable](https://docs.oracle.com/javaee/7/api/javax/persistence/Column.html#updatable--),
+Whether an association property needs to be saved is controlled by [OneToOne.cascade](https://docs.oracle.com/javaee/7/api/javax/persistence/OneToOne.html#cascade--), [ManyToOne. cascade](https://docs.oracle.com/javaee/7/api/javax/persistence/ManyToOne.html#cascade--)、[OneToMany.cascade]( https://docs.oracle.com/javaee/7/api/javax/persistence/OneToMany.html#cascade--) and [ManyToMany.cascade](https://docs.oracle.com/javaee/7/api/javax/persistence/ManyToMany.html#cascade--). However, no matter how the developer configures it, the shape of the data structure that JPA/Hibernate can save for you is fixed.
+
+Jimmer takes a completely different approach, and the saved Jimmer object has [dynamic](.. /object/dynamic), the properties that are set are saved, while properties that are not set are ignored, so that arbitrarily shaped data structures can be saved.
+
+</td>
+</tr>
+<tr>
+<td>Entity object calculated properties</td>
+<td><a href="https://github.com/graphql/dataloader">DataLoader</a></td>
+<td>
+
+-   Calculated properties do not have the [N + 1](https://stackoverflow.com/questions/97197/what-is-the-n1-selects-problem-in-orm-object-relational-mapping) problem
+
+-   Calculation logic is decoupled from ORM, and business information (such as identity permissions) can be used for calculation, allowing the use of non-SQL technology
+
+</td>
+</tr>
+<tr>
+<td>Entity object remote associations</td>
+<td><a href="https://www.apollographql.com/docs/federation/">Apollo Federation</a></td>
+<td>
+
+-   Aassociation across microservices, where the entities on both ends of the association belong to different microservices (that also means they belong to different databases).
+
+-   If the shape of the data structure being queried includes remote associations, cross-service data access will be automatically completed using HTTP request, which is transparent to developers.
+
+-   Combine the relational models of different microservices into a global relational model.
+
+</td>
+</tr>
+<tr>
+<td>Intra-transaction trigger</td>
+<td><a href="https://seata.io/en-us/docs/dev/mode/at-mode.html">Seata's AT mode</a></td>
+<td>
+
+-   Similarities: Inject additional query SQL when modifying the database to capture database changes
+
+-   The difference: Unlike seata which will perform more operations, jimmer intra-transaction triggers only send events to notify users; in addition, there is no need to proxy JDBC connection pool like [Seata's AT mode](https://seata.io/en-us/docs/dev/mode/at-mode.html).
+
+:::note
+If conditions permit, binlog triggers should be used in preference to Intra-transaction triggers
+:::
+
+</td>
+</tr>
+<tr>
+<td>Immutable objects</td>
+<td><a href="https://github.com/immerjs/immer">immer</a></td>
+<td>
+
+Unlike traditional ORM, all entity objects in Jimmer are immutable objects.
+
+:::note
+This is very important. If mutable objects are used as entity objects, it actually condones developers to arbitrarily construct `circular references`, which will be a problem with endless consequences. 
+:::
+
+Unfortunately, the Java record and `copy()` function of Kotlin data class is designed for simple immutable objects, and it is difficult to handle complex deep immutable object copying and construction in a concise manner, and deep and complex data structures are exactly what the ORM framework has to face.
+
+Therefore, Jimmer has ported [immer](https://github.com/immerjs/immer) for Java/Kotlin. This is a powerful immutable object solution. This framework is named Jimmer, paying tribute to [immer](https://github.com/immerjs/immer).
+
+</td>
+</tr>
+</tbody>
+</table>
