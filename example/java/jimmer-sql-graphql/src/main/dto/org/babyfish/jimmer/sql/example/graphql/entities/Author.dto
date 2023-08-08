@@ -10,12 +10,11 @@
  */
 
 
-input BookStoreInput {
-
+input AuthorInput {
     /*
-     * #allScalars: All scalar fields of `BookStore` and `BaseEntity`
+     * #allScalars: All scalar fields of `Author` and `BaseEntity`
      *
-     * #allScalars(BookStore): All scalar fields of `BookStore`, exclude `BaseEntity`
+     * #allScalars(Book): All scalar fields of `Author`, exclude BaseEntity`
      */
-    #allScalars(BookStore)
+    #allScalars(Author)
 }
