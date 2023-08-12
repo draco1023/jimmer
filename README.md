@@ -11,7 +11,7 @@
 
    -  Front-end and back-end are free of docking
 
-   -  Remote associations across micro service
+   -  Remote associations across micro services
 
 -  Ultimate performance
 
@@ -19,4 +19,4 @@
 
 You can view erverything from documentaton.
 
-Please view [**documentation**](https://babyfish-ct.github.io/jimmer/)*(Both english & chinese)* to know everything.
+Please view [**English Documentation**](https://babyfish-ct.github.io/jimmer/) or [中文文档](https://babyfish-ct.gitee.io/jimmer-doc/) to know everything.
