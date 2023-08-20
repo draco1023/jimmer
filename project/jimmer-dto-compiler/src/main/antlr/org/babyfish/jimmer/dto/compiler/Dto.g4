@@ -8,8 +8,23 @@ package org.babyfish.jimmer.dto.compiler;
 
 dto
     :
+    (importStatements += importStatement)*
     (dtoTypes+=dtoType)*
     EOF
+    ;
+
+importStatement
+    :
+    'import' parts += Identifier ('.' parts += Identifier)*
+    (
+        '.' '{' importedTypes += importedType (',' importedTypes += importedType)* '}' |
+        'as' alias = Identifier
+    )?
+    ;
+
+importedType
+    :
+    name = Identifier ('as' alias = Identifier)?
     ;
 
 dtoType
@@ -29,7 +44,7 @@ dtoBody
 
 explicitProp
     :
-    allScalars | aliasGroup | positiveProp | negativeProp
+    allScalars | aliasGroup | positiveProp | negativeProp | userProp
     ;
 
 allScalars
@@ -75,6 +90,24 @@ negativeProp
     '-' prop = Identifier
     ;
 
+userProp
+    :
+    prop = Identifier ':' typeRef
+    ;
+
+typeRef
+    :
+    qualifiedName
+    ('<' genericArguments += genericArgument (',' genericArguments += genericArgument)? '>')?
+    (optional = '?')?
+    ;
+
+genericArgument
+    :
+    wildcard = '*' |
+    (modifier = Identifier)? typeRef
+    ;
+
 qualifiedName
     :
     parts+=Identifier ('.' parts+=Identifier)*
@@ -84,7 +117,7 @@ qualifiedName
 
 Identifier
     :
-    [$A-Za-z][$A-Za-z0-9]*
+    [$A-Za-z_][$A-Za-z_0-9]*
     ;
 
 WhiteSpace
