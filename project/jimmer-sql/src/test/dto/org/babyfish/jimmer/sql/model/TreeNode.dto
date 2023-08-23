@@ -4,3 +4,17 @@ input RecursiveTree {
         name
     }* // '*' means recursive
 }
+
+input TreeNodeInput {
+    #allScalars
+    id(parent)
+}
+
+FlatTreeNode {
+    #allScalars
+    flat(parent) {
+        as(^ -> parent) {
+            #allScalars
+        }
+    }
+}

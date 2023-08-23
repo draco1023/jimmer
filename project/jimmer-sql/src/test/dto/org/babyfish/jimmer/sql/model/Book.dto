@@ -32,7 +32,7 @@ BookView : Key {
     }
 }
 
-BookSpecification {
+input-only BookSpecification {
     #allScalars(Book)?
 
     @Job(value = [
@@ -50,15 +50,15 @@ BookSpecification {
     tag7: LocalDateTime
 }
 
-input BookInput {
+input-only BookInput {
     #allScalars
-    id(store)
+    id(store)!
     id(authors) as authorIds
 }
 
-input CompositeBookInput {
+input-only CompositeBookInput {
     #allScalars
-    store {
+    store! {
         #allScalars
         -id
     }
