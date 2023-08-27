@@ -304,6 +304,9 @@ class Context {
                         parseType(annotatedParameterizedType.getAnnotatedActualTypeArguments()[1])
                 );
             }
+            if (Optional.class.isAssignableFrom(rawClass)) {
+                return NullableTypeImpl.of(parseType(annotatedParameterizedType.getAnnotatedActualTypeArguments()[0]));
+            }
             return new Context(this, annotatedParameterizedType).objectType(
                     rawClass,
                     Arrays.stream(annotatedParameterizedType.getAnnotatedActualTypeArguments())
@@ -473,6 +476,11 @@ class Context {
                 return new MapTypeImpl(
                         parseKotlinType(argumentTypes.get(0)),
                         parseKotlinType(argumentTypes.get(1))
+                );
+            }
+            if (Optional.class.isAssignableFrom(javaClass)) {
+                return NullableTypeImpl.of(
+                        parseKotlinType(argumentTypes.get(0))
                 );
             }
             return new Context(this, type).objectType(
