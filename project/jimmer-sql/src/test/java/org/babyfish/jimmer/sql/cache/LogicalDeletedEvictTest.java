@@ -23,7 +23,7 @@ import java.sql.Connection;
 import java.util.*;
 import java.util.function.Function;
 
-public class ParameterizedCacheEvictTest extends AbstractQueryTest {
+public class LogicalDeletedEvictTest extends AbstractQueryTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -34,9 +34,8 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
     @BeforeEach
     public void initialize() {
         deleteMessages = new ArrayList<>();
-        ParameterizedCacheEvictTest that = this;
+        LogicalDeletedEvictTest that = this;
         sqlClient = getSqlClient(it -> {
-            it.addFilters(new UndeletedFilter());
             it.setCaches(cfg -> {
                 cfg.setCacheFactory(
                         new CacheFactory() {
@@ -47,17 +46,17 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
 
                             @Override
                             public @Nullable Cache<?, ?> createAssociatedIdCache(@NotNull ImmutableProp prop) {
-                                return ParameterizedCaches.create(prop, that::onPropCacheDelete);
+                                return new CacheImpl<>(prop, that::onPropCacheDelete);
                             }
 
                             @Override
                             public @Nullable Cache<?, List<?>> createAssociatedIdListCache(@NotNull ImmutableProp prop) {
-                                return ParameterizedCaches.create(prop, that::onPropCacheDelete);
+                                return new CacheImpl<>(prop, that::onPropCacheDelete);
                             }
 
                             @Override
                             public @Nullable Cache<?, ?> createResolverCache(@NotNull ImmutableProp prop) {
-                                return ParameterizedCaches.create(prop, that::onPropCacheDelete);
+                                return new CacheImpl<>(prop, that::onPropCacheDelete);
                             }
                         }
                 );
@@ -101,14 +100,14 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
                     ctx.sql(
                             "select distinct tb_1_.ID " +
                                     "from ADMINISTRATOR_METADATA tb_1_ " +
-                                    "where tb_1_.ADMINISTRATOR_ID = ?"
-                    );
+                                    "where tb_1_.ADMINISTRATOR_ID = ? and tb_1_.DELETED <> ?"
+                    ).variables(1L, true);
                     ctx.statement(1).sql(
                             "select distinct tb_1_.ID " +
                                     "from ROLE tb_1_ " +
                                     "inner join ADMINISTRATOR_ROLE_MAPPING tb_2_ on tb_1_.ID = tb_2_.ROLE_ID " +
-                                    "where tb_2_.ADMINISTRATOR_ID = ?"
-                    ).variables(1L);
+                                    "where tb_2_.ADMINISTRATOR_ID = ? and tb_1_.DELETED <> ?"
+                    ).variables(1L, true);
                 }
         );
         Assertions.assertEquals(
@@ -140,22 +139,20 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
                             "select distinct tb_1_.ID " +
                                     "from ADMINISTRATOR tb_1_ " +
                                     "inner join ADMINISTRATOR_ROLE_MAPPING tb_2_ on tb_1_.ID = tb_2_.ADMINISTRATOR_ID " +
-                                    "where tb_2_.ROLE_ID = ?"
-                    ).variables(100L);
+                                    "where tb_2_.ROLE_ID = ? and tb_1_.DELETED <> ?"
+                    ).variables(100L, true);
                     ctx.statement(1).sql(
                             "select distinct tb_1_.ID " +
                                     "from PERMISSION tb_1_ " +
-                                    "where tb_1_.ROLE_ID = ?"
-                    ).variables(100L);
+                                    "where tb_1_.ROLE_ID = ? and tb_1_.DELETED <> ?"
+                    ).variables(100L, true);
                 }
         );
         Assertions.assertEquals(
                 "[" +
                         "Administrator.roles-1, " +
-                        "Administrator.roles-2, " +
                         "Administrator.roles-3, " +
-                        "Permission.role-1000, " +
-                        "Permission.role-2000" +
+                        "Permission.role-1000" +
                         "]",
                 deleteMessages.toString()
         );
@@ -180,6 +177,7 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
         );
         Assertions.assertEquals(
                 Arrays.asList(
+                        "Permission.role-1000",
                         "Role.permissions-100",
                         "Role.permissionCount-100"
                 ),
@@ -212,9 +210,7 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
                 Arrays.asList(
                         "Permission.role-1000",
                         "Role.permissions-100",
-                        "Role.permissionCount-100",
-                        "Role.permissions-200",
-                        "Role.permissionCount-200"
+                        "Role.permissionCount-100"
                 ),
                 deleteMessages
         );
@@ -278,25 +274,5 @@ public class ParameterizedCacheEvictTest extends AbstractQueryTest {
                 ),
                 deleteMessages
         );
-    }
-
-    private static class UndeletedFilter implements CacheableFilter<NamedEntityProps> {
-
-        @Override
-        public void filter(FilterArgs<NamedEntityProps> args) {
-            args.where(args.getTable().deleted().eq(false));
-        }
-
-        @Override
-        public SortedMap<String, Object> getParameters() {
-            SortedMap<String, Object> map = new TreeMap<>();
-            map.put("deleted", false);
-            return map;
-        }
-
-        @Override
-        public boolean isAffectedBy(EntityEvent<?> e) {
-            return e.getUnchangedRef(NamedEntityProps.DELETED) == null;
-        }
     }
 }

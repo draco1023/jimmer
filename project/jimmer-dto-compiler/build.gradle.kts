@@ -1,5 +1,7 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
-    java
+    `java-library`
     kotlin("jvm") version "1.7.10"
     antlr
     id("maven-publish")
@@ -30,6 +32,14 @@ tasks.getByName<Test>("test") {
 
 tasks.withType<Javadoc>{
     options.encoding = "UTF-8"
+}
+
+tasks.withType<Jar>().configureEach {
+    dependsOn(tasks.withType<AntlrTask>())
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    dependsOn(tasks.withType<AntlrTask>())
 }
 
 // Publish to maven-----------------------------------------------------
