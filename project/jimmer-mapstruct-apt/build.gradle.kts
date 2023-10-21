@@ -1,7 +1,5 @@
 plugins {
-    java
-    kotlin("jvm") version "1.6.10"
-    antlr
+    `java-library`
     id("maven-publish")
     id("signing")
 }
