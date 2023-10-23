@@ -182,7 +182,7 @@ public class OneToManyTest extends AbstractMutationTest {
                 // In this test case, no more child objects will be found
                 new ExecutedStatement(
                         "select 1 from BOOK " +
-                                "where STORE_ID = ? and ID not in(?) " +
+                                "where STORE_ID = ? and ID <> ? " +
                                 "limit ?",
                         1L, 10L, 1
                 )
@@ -249,7 +249,7 @@ public class OneToManyTest extends AbstractMutationTest {
                 //
                 // In this test case, no more child objects will be found
                 new ExecutedStatement(
-                        "select 1 from BOOK where STORE_ID = ? and ID not in(?) limit ?",
+                        "select 1 from BOOK where STORE_ID = ? and ID <> ? limit ?",
                         1L, 10L, 1
                 )
         );
