@@ -51,17 +51,17 @@ class RecursiveDtoProp<T extends BaseType, P extends BaseProp> implements DtoPro
     }
 
     @Override
+    public boolean isBaseNullable() {
+        return baseProp.isNullable();
+    }
+
+    @Override
     public boolean isIdOnly() {
         return false;
     }
 
     @Override
     public boolean isFlat() {
-        return false;
-    }
-
-    @Override
-    public boolean isUnmapped() {
         return false;
     }
 

@@ -186,8 +186,18 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
             case REQUIRED:
                 return false;
             default:
-                return getBaseProp().isNullable();
+                return isBaseNullable();
         }
+    }
+
+    @Override
+    public boolean isBaseNullable() {
+        for (DtoProp<T, P> p = this; p != null; p = p.getNextProp()) {
+            if (p.getBaseProp().isNullable()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -203,13 +213,6 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
     @Override
     public boolean isFlat() {
         return "flat".equals(funcName);
-    }
-
-    @Override
-    public boolean isUnmapped() {
-        return "min".equals(funcName) ||
-                "max".equals(funcName) ||
-                "idInList".equals(funcName);
     }
 
     @Nullable

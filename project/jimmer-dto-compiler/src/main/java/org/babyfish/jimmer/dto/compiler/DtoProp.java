@@ -26,11 +26,11 @@ public interface DtoProp<T extends BaseType, P extends BaseProp> extends DtoProp
 
     boolean isNullable();
 
+    boolean isBaseNullable();
+
     boolean isIdOnly();
 
     boolean isFlat();
-
-    boolean isUnmapped();
 
     @Nullable
     String getAlias();
