@@ -1,0 +1,24 @@
+plugins {
+    id 'org.springframework.boot' version '2.7.0'
+    id 'io.spring.dependency-management' version '1.0.11.RELEASE'
+    id 'java-library'
+}
+
+ext {
+    jimmerVersion = "0.8.38"
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation "org.babyfish.jimmer:jimmer-sql:${jimmerVersion}"
+    annotationProcessor "org.babyfish.jimmer:jimmer-apt:${jimmerVersion}"
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
