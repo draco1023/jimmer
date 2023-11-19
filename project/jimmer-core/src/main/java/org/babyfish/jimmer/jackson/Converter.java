@@ -1,10 +1,18 @@
 package org.babyfish.jimmer.jackson;
 
-public interface Converter<T> {
+/**
+ * @see LongConverter
+ * @see LongListConverter
+ */
+public interface Converter<S, T> {
 
-    T output(T value);
+    T output(S value);
 
-    default T input(T value) {
-        return value;
+    default S input(T jsonValue) {
+        throw new UnsupportedOperationException(
+                "\"" +
+                        this.getClass().getName() +
+                        "\" does not support the `input` method"
+        );
     }
 }
