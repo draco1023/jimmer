@@ -122,7 +122,7 @@ TreeNodeTable node = TreeNodeTable.$;
 
 List<TreeNode> treeNodes = sqlClient
     .createQuery(node)
-    .where(node.parent().isNull())
+    .where(node.parentId().isNull())
     .select(
         node.fetch(
             TreeNodeFetcher.$
@@ -143,7 +143,7 @@ List<TreeNode> treeNodes = sqlClient
 ```kotlin
 val treeNodes = sqlClient
     .createQuery(TreeNode::class) {
-        where(table.parent.isNull())
+        where(table.parentId.isNull())
         select(
             table.fetchBy {
                 allScalarFields()
@@ -236,7 +236,7 @@ TreeNodeTable node = TreeNodeTable.$;
 
 List<TreeNode> treeNodes = sqlClient
     .createQuery(node)
-    .where(node.parent().isNull())
+    .where(node.parentId().isNull())
     .select(
         node.fetch(
             TreeNodeFetcher.$
@@ -257,7 +257,7 @@ List<TreeNode> treeNodes = sqlClient
 ```kotlin
 val treeNodes = sqlClient
     .createQuery(TreeNode::class) {
-        where(table.parent.isNull())
+        where(table.parentId.isNull())
         select(
             table.fetchBy {
                 allScalarFields()
@@ -501,7 +501,7 @@ TreeNodeTable node = TreeNodeTable.$;
 
 List<TreeNode> treeNodes = sqlClient
     .createQuery(node)
-    .where(node.parent().isNull())
+    .where(node.parentId().isNull())
     .select(
         node.fetch(
             TreeNodeFetcher.$
@@ -524,7 +524,7 @@ List<TreeNode> treeNodes = sqlClient
 ```kotlin
 val treeNodes = sqlClient
     .createQuery(TreeNode::class) {
-        where(table.parent.isNull())
+        where(table.parentId.isNull())
         select(
             table.fetchBy {
                 allScalarFields()
