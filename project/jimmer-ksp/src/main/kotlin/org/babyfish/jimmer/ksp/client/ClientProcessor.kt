@@ -32,11 +32,9 @@ class ClientProcessor(
         override fun loadSource(typeName: String): KSDeclaration? =
             ctx.resolver.getClassDeclarationByName(typeName)
 
-        override fun typeNameNotFound(typeName: String) =
-            throw MetaException(
-                ancestorSource(),
-                "Cannot resolve the type name \"$typeName\""
-            )
+        override fun throwException(source: KSDeclaration, message: String) {
+            throw MetaException(source, message)
+        }
 
         override fun fillDefinition(source: KSDeclaration?) {
             val declaration = source as KSClassDeclaration
@@ -280,6 +278,7 @@ class ClientProcessor(
     private fun SchemaBuilder<KSDeclaration>.fillDefinition(declaration: KSClassDeclaration, immutable: Boolean) {
         val definition = current<TypeDefinitionImpl<KSDeclaration>>()
         definition.isImmutable = immutable
+        definition.isApiIgnore = declaration.annotation(ApiIgnore::class) !== null
 
         if (!immutable || declaration.classKind == ClassKind.INTERFACE) {
             for (propDeclaration in declaration.getDeclaredProperties()) {
@@ -299,7 +298,7 @@ class ClientProcessor(
         if (declaration.classKind == ClassKind.CLASS || declaration.classKind == ClassKind.INTERFACE) {
             for (superTypeReference in declaration.superTypes) {
                 val superName = superTypeReference.resolve().declaration.toTypeName()
-                if (TypeDefinition.isGenerationRequired(processTypeName(superName))) {
+                if (processTypeName(superName).isGenerationRequired) {
                     typeRef { superType ->
                         fillType(superTypeReference)
                         definition.addSuperType(superType)

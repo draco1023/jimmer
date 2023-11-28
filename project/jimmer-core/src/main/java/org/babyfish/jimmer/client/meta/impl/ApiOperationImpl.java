@@ -6,10 +6,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import org.babyfish.jimmer.client.meta.ApiOperation;
-import org.babyfish.jimmer.client.meta.ApiParameter;
-import org.babyfish.jimmer.client.meta.Doc;
-import org.babyfish.jimmer.client.meta.TypeRef;
+import org.babyfish.jimmer.client.meta.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -30,6 +27,10 @@ public class ApiOperationImpl<S> extends AstNode<S> implements ApiOperation {
     private TypeRefImpl<S> returnType;
 
     private Doc doc;
+
+    private StringBuilder keyBuilder;
+
+    private String key;
 
     ApiOperationImpl(S source, String name) {
         super(source);
@@ -67,6 +68,21 @@ public class ApiOperationImpl<S> extends AstNode<S> implements ApiOperation {
 
     public void addParameter(ApiParameterImpl<S> parameter) {
         this.parameters.add(parameter);
+        addIgnoredParameter(parameter);
+    }
+
+    public void addIgnoredParameter(ApiParameterImpl<S> parameter) {
+        if (keyBuilder == null) {
+            keyBuilder = new StringBuilder();
+            keyBuilder.append(name);
+        }
+        TypeName typeName = parameter.getType().getTypeName();
+        if (typeName.getTypeVariable() != null) {
+            throw new AssertionError(
+                    "Illegal parameter \"" + parameter.getName() + "\", its type cannot be type variable"
+            );
+        }
+        keyBuilder.append(':').append(typeName);
     }
 
     @Nullable
@@ -102,12 +118,25 @@ public class ApiOperationImpl<S> extends AstNode<S> implements ApiOperation {
 
     @Override
     public String toString() {
-        return "ApiOperationImpl{" +
-                "name='" + name + '\'' +
-                ", parameters=" + parameters +
-                ", returnType=" + returnType +
-                ", doc='" + doc + '\'' +
-                '}';
+        return key().replaceFirst(":", "(").replace(":", ", ") + ')';
+    }
+
+    public String key() {
+        String key = this.key;
+        if (key == null) {
+            if (keyBuilder == null) {
+                this.key = key = name;
+            } else {
+                this.key = key = keyBuilder.toString();
+                keyBuilder = null;
+            }
+        }
+        return key;
+    }
+
+    public void setKey(String key) {
+        this.key = key;
+        this.keyBuilder = null;
     }
 
     public static class Serializer extends JsonSerializer<ApiOperationImpl<?>> {
@@ -117,6 +146,8 @@ public class ApiOperationImpl<S> extends AstNode<S> implements ApiOperation {
             gen.writeStartObject();
             gen.writeFieldName("name");
             gen.writeString(operation.getName());
+            gen.writeFieldName("key");
+            gen.writeString(operation.key());
             if (operation.getDoc() != null) {
                 provider.defaultSerializeField("doc", operation.getDoc(), gen);
             }
@@ -138,6 +169,7 @@ public class ApiOperationImpl<S> extends AstNode<S> implements ApiOperation {
             JsonNode jsonNode = jp.getCodec().readTree(jp);
             String name = jsonNode.get("name").asText();
             ApiOperationImpl<Object> operation = new ApiOperationImpl<>(null, name);
+            operation.setKey(jsonNode.get("key").asText());
             if (jsonNode.has("doc")) {
                 operation.setDoc(ctx.readTreeAsValue(jsonNode.get("doc"), Doc.class));
             }

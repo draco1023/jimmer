@@ -65,13 +65,20 @@ public class ApiServiceImpl<S> extends AstNode<S> implements ApiService {
         return (List<ApiOperation>) (List<?>) operations;
     }
 
+    @Nullable
     @Override
     public ApiOperation findOperation(String name, Class<?>... types) {
-        return null;
-    }
-
-    @Override
-    public ApiOperation findOperation(String name, String... typeNames) {
+        StringBuilder keyBuilder = new StringBuilder();
+        keyBuilder.append(name);
+        for (Class<?> type : types) {
+            keyBuilder.append(':').append(type.getName());
+        }
+        String key = keyBuilder.toString();
+        for (ApiOperationImpl<S> operation : operations) {
+            if (operation.key().equals(key)) {
+                return operation;
+            }
+        }
         return null;
     }
 
@@ -99,12 +106,7 @@ public class ApiServiceImpl<S> extends AstNode<S> implements ApiService {
 
     @Override
     public String toString() {
-        return "ApiServiceImpl{" +
-                "className='" + typeName + '\'' +
-                ", groups='" + groups + '\'' +
-                ", operations=" + operations +
-                ", doc='" + doc + '\'' +
-                '}';
+        return typeName;
     }
 
     @JsonValue

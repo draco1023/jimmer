@@ -25,13 +25,17 @@ public class TypeDefinitionVisitor<S> implements AstNodeVisitor<S> {
     public void visitAstNode(AstNode<S> astNode) {
         if (astNode instanceof TypeRefImpl<?>) {
             TypeName typeName = ((TypeRefImpl<?>) astNode).getTypeName();
-            if (!TypeDefinition.isGenerationRequired(typeName) ||
-                    typeDefinitionMap.containsKey(typeName)) {
+            if (!typeName.isGenerationRequired() || typeDefinitionMap.containsKey(typeName)) {
                 return;
             }
             S source = builder.loadSource(typeName.toString());
             if (source == null) {
-                builder.typeNameNotFound(typeName.toString());
+                builder.throwException(
+                        builder.ancestorSource(),
+                        "Cannot resolve the type name \"" +
+                                typeName +
+                                "\""
+                );
             }
             builder.definition(source, typeName, definition -> {
                 typeDefinitionMap.put(typeName, definition);
