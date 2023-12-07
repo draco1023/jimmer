@@ -160,6 +160,17 @@ public class CoalesceBuilder<T> {
         }
 
         @Override
+        protected boolean determineHasVirtualPredicate() {
+            return hasVirtualPredicate(expressions);
+        }
+
+        @Override
+        protected Ast onResolveVirtualPredicate(AstContext ctx) {
+            this.expressions = ctx.resolveVirtualPredicates(expressions);
+            return this;
+        }
+
+        @Override
         public boolean equals(Object o) {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;

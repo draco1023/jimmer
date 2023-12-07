@@ -11,11 +11,11 @@ class BetweenPredicate extends AbstractPredicate {
 
     private final boolean negative;
 
-    private final Expression<?> expression;
+    private Expression<?> expression;
 
-    private final Expression<?> min;
+    private Expression<?> min;
 
-    private final Expression<?> max;
+    private Expression<?> max;
 
     public BetweenPredicate(
             boolean negative,
@@ -50,6 +50,21 @@ class BetweenPredicate extends AbstractPredicate {
         renderChild((Ast) min, builder);
         builder.sql(" and ");
         renderChild((Ast) max, builder);
+    }
+
+    @Override
+    protected boolean determineHasVirtualPredicate() {
+        return hasVirtualPredicate(expression) ||
+                hasVirtualPredicate(min) ||
+                hasVirtualPredicate(max);
+    }
+
+    @Override
+    protected Ast onResolveVirtualPredicate(AstContext ctx) {
+        this.expression = ctx.resolveVirtualPredicate(expression);
+        this.min = ctx.resolveVirtualPredicate(min);
+        this.max = ctx.resolveVirtualPredicate(max);
+        return this;
     }
 
     @Override

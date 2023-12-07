@@ -8,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class CaseBuilder<T> {
 
@@ -141,7 +142,7 @@ public class CaseBuilder<T> {
 
     private static class AnyExpr<T> extends AbstractExpression<T> {
 
-        private Class<T> type;
+        private final Class<T> type;
 
         private List<Tuple2<Predicate, Expression<T>>> whens;
 
@@ -191,6 +192,24 @@ public class CaseBuilder<T> {
                 renderChild((Ast) otherwise, builder);
                 builder.sql(" end");
             });
+        }
+
+        @Override
+        protected boolean determineHasVirtualPredicate() {
+            return whens.stream().anyMatch(it -> hasVirtualPredicate(it.get_1()) || hasVirtualPredicate(it.get_2())) ||
+                    hasVirtualPredicate(otherwise);
+        }
+
+        @Override
+        protected Ast onResolveVirtualPredicate(AstContext ctx) {
+            this.whens = whens.stream().map(
+                    it -> new Tuple2<>(
+                            ctx.resolveVirtualPredicate(it.get_1()),
+                            ctx.resolveVirtualPredicate(it.get_2())
+                    )
+            ).collect(Collectors.toList());
+            this.otherwise = ctx.resolveVirtualPredicate(otherwise);
+            return this;
         }
 
         @Override

@@ -47,6 +47,17 @@ abstract class AggregationExpression<T> extends AbstractExpression<T> {
         builder.sql(")");
     }
 
+    @Override
+    protected boolean determineHasVirtualPredicate() {
+        return hasVirtualPredicate(expression);
+    }
+
+    @Override
+    protected Ast onResolveVirtualPredicate(AstContext ctx) {
+        this.expression = ctx.resolveVirtualPredicate(expression);
+        return this;
+    }
+
     private void validate(JSqlClientImplementor sqlClient) {
         if (!sqlClient.getDialect().isTupleCountSupported()) {
             if (expression instanceof PropExpression<?>) {

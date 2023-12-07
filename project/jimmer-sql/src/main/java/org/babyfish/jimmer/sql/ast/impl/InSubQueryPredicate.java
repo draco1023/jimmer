@@ -10,9 +10,9 @@ import java.util.Objects;
 
 class InSubQueryPredicate extends AbstractPredicate {
 
-    private final Expression<?> expression;
+    private Expression<?> expression;
 
-    private final TypedSubQuery<?> subQuery;
+    private TypedSubQuery<?> subQuery;
 
     private final boolean negative;
 
@@ -51,6 +51,18 @@ class InSubQueryPredicate extends AbstractPredicate {
         renderChild((Ast) expression, builder);
         builder.sql(negative ? " not in " : " in ");
         renderChild((Ast) subQuery, builder);
+    }
+
+    @Override
+    protected boolean determineHasVirtualPredicate() {
+        return hasVirtualPredicate(expression) || hasVirtualPredicate(subQuery);
+    }
+
+    @Override
+    protected Ast onResolveVirtualPredicate(AstContext ctx) {
+        this.expression = ctx.resolveVirtualPredicate(expression);
+        this.subQuery = ctx.resolveVirtualPredicate(subQuery);
+        return this;
     }
 
     @Override

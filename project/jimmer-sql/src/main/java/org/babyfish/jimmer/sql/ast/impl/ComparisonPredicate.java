@@ -41,6 +41,18 @@ abstract class ComparisonPredicate extends AbstractPredicate {
     }
 
     @Override
+    protected boolean determineHasVirtualPredicate() {
+        return hasVirtualPredicate(left) || hasVirtualPredicate(right);
+    }
+
+    @Override
+    protected Ast onResolveVirtualPredicate(AstContext ctx) {
+        left = ctx.resolveVirtualPredicate(left);
+        right = ctx.resolveVirtualPredicate(right);
+        return this;
+    }
+
+    @Override
     public int precedence() {
         return ExpressionPrecedences.COMPARISON;
     }

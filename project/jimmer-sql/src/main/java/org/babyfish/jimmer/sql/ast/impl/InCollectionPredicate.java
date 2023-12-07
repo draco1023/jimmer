@@ -77,6 +77,17 @@ class InCollectionPredicate extends AbstractPredicate {
     }
 
     @Override
+    protected boolean determineHasVirtualPredicate() {
+        return hasVirtualPredicate(expression);
+    }
+
+    @Override
+    protected Ast onResolveVirtualPredicate(AstContext ctx) {
+        this.expression = ctx.resolveVirtualPredicate(expression);
+        return this;
+    }
+
+    @Override
     public Predicate not() {
         return new InCollectionPredicate(expression, values, !negative);
     }

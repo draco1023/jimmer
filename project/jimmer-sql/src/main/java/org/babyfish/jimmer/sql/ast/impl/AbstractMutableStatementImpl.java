@@ -26,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public abstract class AbstractMutableStatementImpl implements FilterableImplementor {
+public abstract class AbstractMutableStatementImpl implements FilterableImplementor, MutableStatementImplementor {
 
     private static final Predicate[] EMPTY_PREDICATES = new Predicate[0];
 
@@ -129,12 +129,14 @@ public abstract class AbstractMutableStatementImpl implements FilterableImplemen
         return Collections.emptyList();
     }
 
+    protected void setHavingPredicates(List<Predicate> havingPredicates) {}
+
     protected List<Order> getOrders() {
         return Collections.emptyList();
     }
 
-    public Predicate getPredicate() {
-        freeze();
+    public Predicate getPredicate(AstContext astContext) {
+        freeze(astContext);
         List<Predicate> ps = predicates;
         return ps.isEmpty() ? null : predicates.get(0);
     }
@@ -155,17 +157,51 @@ public abstract class AbstractMutableStatementImpl implements FilterableImplemen
         return sqlClient.createAssociationSubQuery(table);
     }
 
-    public final boolean freeze() {
+    @Override
+    public boolean hasVirtualPredicate() {
+        for (Predicate predicate : predicates) {
+            if (((Ast)predicate).hasVirtualPredicate()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public void resolveVirtualPredicate(AstContext ctx) {
+        ctx.pushStatement(this);
+
+        // Resolve real table implementation to get table alias immediately before resolving virtual predicates,
+        // this is important because it makes table aliases of SQL looks beautiful
+        getTableImplementor();
+
+        predicates = ctx.resolveVirtualPredicates(predicates);
+        List<Predicate> havingPredicates = getHavingPredicates();
+        if (!havingPredicates.isEmpty()) {
+            setHavingPredicates(ctx.resolveVirtualPredicates(havingPredicates));
+        }
+        ctx.popStatement();
+    }
+
+    public final boolean freeze(AstContext ctx) {
         if (frozen) {
             return false;
         }
-        onFrozen();
+        onFrozen(ctx);
         frozen = true;
         return true;
     }
 
-    protected void onFrozen() {
+    protected void onFrozen(AstContext ctx) {
         predicates = mergePredicates(predicates);
+    }
+
+    public void applyVirtualPredicates(AstContext ctx) {
+        int modCount = -1;
+        while (modCount != ctx.modCount()) {
+            modCount = ctx.modCount();
+            resolveVirtualPredicate(ctx);
+        }
     }
 
     public final void applyGlobalFilters(

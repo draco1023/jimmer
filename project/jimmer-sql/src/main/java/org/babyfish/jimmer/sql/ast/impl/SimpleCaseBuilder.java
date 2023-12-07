@@ -11,6 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class SimpleCaseBuilder<C, T> {
 
@@ -60,7 +61,7 @@ public class SimpleCaseBuilder<C, T> {
             return (Expression<T>) new NumExpr(
                     type,
                     expression,
-                    (List<?>)whens,
+                    whens,
                     otherwise
             );
         }
@@ -190,11 +191,11 @@ public class SimpleCaseBuilder<C, T> {
 
         private final Class<T> type;
 
-        private final Expression<?> expression;
+        private Expression<?> expression;
 
-        private final List<Tuple2<Expression<?>, Expression<T>>> whens;
+        private List<Tuple2<Expression<?>, Expression<T>>> whens;
 
-        private final Expression<T> otherwise;
+        private Expression<T> otherwise;
 
         AnyExpr(
                 Class<T> type,
@@ -207,7 +208,6 @@ public class SimpleCaseBuilder<C, T> {
             this.whens = whens;
             this.otherwise = otherwise;
         }
-
 
         @Override
         public Class<T> getType() {
@@ -244,6 +244,27 @@ public class SimpleCaseBuilder<C, T> {
                 renderChild((Ast) otherwise, builder);
                 builder.sql(" end");
             });
+        }
+
+        @Override
+        protected boolean determineHasVirtualPredicate() {
+            return hasVirtualPredicate(expression) ||
+                    whens.stream().anyMatch(it -> hasVirtualPredicate(it.get_1()) || hasVirtualPredicate(it.get_2())) ||
+                    hasVirtualPredicate(otherwise);
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        protected Ast onResolveVirtualPredicate(AstContext ctx) {
+            this.expression = ctx.resolveVirtualPredicate(expression);
+            this.whens = (List<Tuple2<Expression<?>, Expression<T>>>)(List<?>)this.whens.stream().map(
+                    it -> new Tuple2<>(
+                            ctx.resolveVirtualPredicate(it.get_1()),
+                            ctx.resolveVirtualPredicate(it.get_2())
+                    )
+            ).collect(Collectors.toList());
+            this.otherwise = ctx.resolveVirtualPredicate(otherwise);
+            return this;
         }
 
         @Override

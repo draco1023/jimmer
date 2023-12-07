@@ -1,8 +1,9 @@
 package org.babyfish.jimmer.sql.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.babyfish.jimmer.client.Api;
 import org.babyfish.jimmer.client.FetchBy;
+import org.babyfish.jimmer.client.ThrowsAll;
+import org.babyfish.jimmer.client.meta.Api;
 import org.babyfish.jimmer.sql.fetcher.Fetcher;
 import org.babyfish.jimmer.sql.model.AuthorFetcher;
 import org.babyfish.jimmer.sql.model.Book;
@@ -19,10 +20,13 @@ import java.util.List;
 /**
  * An interface to test generation of `META-INF/jimmer/client`
  */
-@Api(groups = "abc")
+@Api
 public interface BookService {
 
     void initialize(ObjectMapper mapper);
+
+    @Api("mobile")
+    void processTree(Tree<Book> tree);
 
     /**
      * Find books with simple format
@@ -34,7 +38,8 @@ public interface BookService {
      * @param authorName Optional value to filter `Author.firstName` or `Author.lastName`
      * @return A list of books objects, with short associations
      */
-    @Api
+    @Api("mobile")
+    @ThrowsAll(SystemErrorCode.class)
     List<? extends @FetchBy("SIMPLE_FETCHER") Book> findSimpleBooks(
             @Nullable String name,
             @Nullable Integer edition,
@@ -54,7 +59,8 @@ public interface BookService {
      * @param authorName Optional value to filter `Author.firstName` or `Author.lastName`
      * @return A list of books objects, with long associations
      */
-    @Api
+    @Api("pc")
+    @ThrowsSystemError({SystemErrorCode.A, SystemErrorCode.B})
     List<@FetchBy("COMPLEX_FETCHER") Book> findComplexBooks(
             @Nullable String name,
             @Nullable Integer edition,
@@ -64,21 +70,21 @@ public interface BookService {
             @Nullable String authorName
     );
 
-    @Api
+    @Api("pc")
     List<? extends @FetchBy("COMPLEX_FETCHER") Book> findBySuperQBE(
             @Nullable BookSpecification2 specification
     );
 
-    @Api
+    @Api("pc")
     @FetchBy("COMPLEX_FETCHER") Book findByNameAndEdition(
             String name,
             int edition
     );
 
-    @Api
+    @Api("mobile")
     void saveBook(BookInput input);
 
-    @Api
+    @Api("pc")
     void saveBook(CompositeBookInput input);
 
     Fetcher<Book> SIMPLE_FETCHER =
