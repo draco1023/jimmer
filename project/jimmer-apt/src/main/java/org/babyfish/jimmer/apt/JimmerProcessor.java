@@ -2,6 +2,7 @@ package org.babyfish.jimmer.apt;
 
 import org.babyfish.jimmer.apt.client.ClientProcessor;
 import org.babyfish.jimmer.apt.dto.DtoProcessor;
+import org.babyfish.jimmer.apt.entry.EntryProcessor;
 import org.babyfish.jimmer.apt.error.ErrorProcessor;
 import org.babyfish.jimmer.apt.immutable.ImmutableProcessor;
 import org.babyfish.jimmer.client.EnableImplicitApi;
@@ -37,6 +38,8 @@ public class JimmerProcessor extends AbstractProcessor {
     private Messager messager;
 
     private Collection<String> dtoDirs;
+
+    private boolean checkedException;
 
     private boolean serverGenerated;
 
@@ -81,6 +84,7 @@ public class JimmerProcessor extends AbstractProcessor {
         } else {
             this.dtoDirs = Collections.singletonList("src/main/dto");
         }
+        checkedException = "true".equals(processingEnv.getOptions().get("jimmer.checkedException"));
         context = new Context(
                 processingEnv.getElementUtils(),
                 processingEnv.getTypeUtils(),
@@ -107,10 +111,12 @@ public class JimmerProcessor extends AbstractProcessor {
             }
             if (!serverGenerated) {
                 serverGenerated = true;
-                new ImmutableProcessor(context, filer, messager).process(roundEnv);
-                new ErrorProcessor(context, filer).process(roundEnv);
+                Collection<TypeElement> immutableTypeElements =
+                        new ImmutableProcessor(context, filer, messager).process(roundEnv).keySet();
+                new EntryProcessor(context, immutableTypeElements, filer).process();
+                boolean errorGenerated = new ErrorProcessor(context, checkedException, filer).process(roundEnv);
                 boolean dtoGenerated = new DtoProcessor(context, elements, filer, dtoDirs).process();
-                if (dtoGenerated) {
+                if (errorGenerated || dtoGenerated) {
                     delayedClientTypeNames = roundEnv
                             .getRootElements()
                             .stream()
