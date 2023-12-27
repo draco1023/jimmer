@@ -1,11 +1,8 @@
 package org.babyfish.jimmer.spring.kotlin
 
-import org.babyfish.jimmer.client.meta.Metadata
 import org.babyfish.jimmer.spring.AbstractTest
 import org.babyfish.jimmer.spring.cfg.JimmerProperties
-import org.babyfish.jimmer.spring.cfg.MetadataCondition
 import org.babyfish.jimmer.spring.cfg.SqlClientConfig
-import org.babyfish.jimmer.spring.client.MetadataFactoryBean
 import org.babyfish.jimmer.spring.client.TypeScriptController
 import org.babyfish.jimmer.spring.datasource.DataSources
 import org.babyfish.jimmer.spring.datasource.TxCallback
@@ -36,8 +33,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
-import java.sql.Connection
-import java.sql.PreparedStatement
 import javax.sql.DataSource
 
 @SpringBootTest(properties = ["jimmer.client.ts.path=/my-ts.zip", "jimmer.language=kotlin"])
@@ -94,18 +89,8 @@ open class SpringKotlinTest : AbstractTest() {
         @ConditionalOnProperty("jimmer.client.ts.path")
         @ConditionalOnMissingBean(TypeScriptController::class)
         @Bean
-        open fun typeScriptController(metadata: Metadata, properties: JimmerProperties): TypeScriptController {
-            return TypeScriptController(metadata, properties)
-        }
-
-        @Conditional(MetadataCondition::class)
-        @ConditionalOnMissingBean(Metadata::class)
-        @Bean
-        open fun metadataFactoryBean(
-            ctx: ApplicationContext,
-            @Autowired(required = false) parameterNameDiscoverer: ParameterNameDiscoverer?
-        ): MetadataFactoryBean {
-            return MetadataFactoryBean(ctx, parameterNameDiscoverer)
+        open fun typeScriptController(properties: JimmerProperties): TypeScriptController {
+            return TypeScriptController(properties)
         }
     }
 

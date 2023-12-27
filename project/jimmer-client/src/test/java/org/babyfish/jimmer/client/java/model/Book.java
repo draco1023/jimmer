@@ -1,42 +1,69 @@
 package org.babyfish.jimmer.client.java.model;
 
-import org.babyfish.jimmer.client.Doc;
 import org.babyfish.jimmer.jackson.JsonConverter;
-import org.babyfish.jimmer.jackson.LongConverter;
-import org.babyfish.jimmer.jackson.LongListConverter;
+import org.babyfish.jimmer.jackson.LongToStringConverter;
+import org.babyfish.jimmer.jackson.LongListToStringListConverter;
 import org.babyfish.jimmer.sql.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * The book object
+ */
 @Entity
 public interface Book {
 
-    @JsonConverter(LongConverter.class)
+    /**
+     * The id is long, but the client type is string
+     * because JS cannot retain large long values
+     */
+    @JsonConverter(LongToStringConverter.class)
     @Id
     long id();
 
+    /**
+     * The name of this book,
+     * <p>Together with `edition`, this property forms the key of the book</p>
+     */
     String name();
 
+    /**
+     * The edition of this book,
+     * <p>Together with `name`, this property forms the key of the book</p>
+     */
     int edition();
 
+    /**
+     * The price of this book
+     */
     BigDecimal price();
 
-    @Doc("The bookstore to which the current book belongs, null is allowd")
+    /**
+     * The many-to-one association from `Book` to `BookStore`
+     */
     @ManyToOne
     @Nullable
     BookStore store();
 
-    @Doc("All authors involved in writing the work")
+    /**
+     * The many-to-many association from `Book` to `Author`
+     */
     @ManyToMany
     List<Author> authors();
 
-    @JsonConverter(LongConverter.class)
+    /**
+     * The id view of `Book.store`
+     */
+    @JsonConverter(LongToStringConverter.class)
     @IdView
     Long storeId();
 
-    @JsonConverter(LongListConverter.class)
+    /**
+     * The id view of `Book.authors`
+     */
+    @JsonConverter(LongListToStringListConverter.class)
     @IdView("authors")
     List<Long> authorIds();
 }

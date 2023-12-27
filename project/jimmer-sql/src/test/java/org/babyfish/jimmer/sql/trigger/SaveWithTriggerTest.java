@@ -4,7 +4,6 @@ import org.babyfish.jimmer.ImmutableObjects;
 import org.babyfish.jimmer.sql.DissociateAction;
 import org.babyfish.jimmer.sql.ast.mutation.AffectedTable;
 import org.babyfish.jimmer.sql.ast.mutation.SaveMode;
-import org.babyfish.jimmer.sql.common.Constants;
 import org.babyfish.jimmer.sql.model.*;
 import org.babyfish.jimmer.sql.model.oneway.TaskDraft;
 import org.babyfish.jimmer.sql.model.oneway.Worker;
@@ -1462,7 +1461,7 @@ public class SaveWithTriggerTest extends AbstractTriggerTest {
                         it.detail(ex -> {
                             Assertions.assertEquals(
                                     SaveErrorCode.OPTIMISTIC_LOCK_ERROR,
-                                    ((SaveException)ex).getCode()
+                                    ((SaveException)ex).getSaveErrorCode()
                             );
                         });
                     });
@@ -1512,7 +1511,7 @@ public class SaveWithTriggerTest extends AbstractTriggerTest {
                         it.detail(ex -> {
                             Assertions.assertEquals(
                                     SaveErrorCode.OPTIMISTIC_LOCK_ERROR,
-                                    ((SaveException)ex).getCode()
+                                    ((SaveException)ex).getSaveErrorCode()
                             );
                         });
                     });

@@ -1,5 +1,7 @@
 package org.babyfish.jimmer.ksp.client
 
+import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.annotation.JsonValue
 import com.google.devtools.ksp.*
 import com.google.devtools.ksp.processing.Dependencies
 import com.google.devtools.ksp.symbol.*
@@ -11,8 +13,6 @@ import org.babyfish.jimmer.client.meta.*
 import org.babyfish.jimmer.client.meta.impl.*
 import org.babyfish.jimmer.error.CodeBasedException
 import org.babyfish.jimmer.error.CodeBasedRuntimeException
-import org.babyfish.jimmer.error.ErrorField
-import org.babyfish.jimmer.error.ErrorFields
 import org.babyfish.jimmer.impl.util.StringUtil
 import org.babyfish.jimmer.internal.ClientException
 import org.babyfish.jimmer.ksp.*
@@ -27,6 +27,8 @@ class ClientProcessor(
     private val explicitClientApi: Boolean,
     private val delayedClientTypeNames: Collection<String>?
 ) {
+    private val clientExceptionContext = ClientExceptionContext()
+
     private val builder = object: SchemaBuilder<KSDeclaration>(null) {
 
         override fun loadSource(typeName: String): KSClassDeclaration? =
@@ -48,8 +50,9 @@ class ClientProcessor(
         }
     }
 
-    fun process() {
+    private val jsonValueTypeNameStack = mutableSetOf<TypeName>()
 
+    fun process() {
         for (file in ctx.resolver.getAllFiles()) {
             for (declaration in file.declarations) {
                 builder.handleService(declaration)
@@ -91,7 +94,7 @@ class ClientProcessor(
             )
         }
         val schema = current<SchemaImpl<KSDeclaration>>()
-        api(declaration, declaration.fullName) { service ->
+        api(declaration, declaration.toTypeName()) { service ->
             declaration.annotation(Api::class)?.get<List<String>>("value")?.takeIf { it.isNotEmpty() }.let { groups ->
                 service.groups = groups
             }
@@ -144,8 +147,10 @@ class ClientProcessor(
             func.docString?.let {
                 operation.doc = Doc.parse(it)
             }
+            var index = 0
             for (param in func.parameters) {
                 parameter(null, param.name!!.asString()) { parameter ->
+                    parameter.originalIndex = index++
                     typeRef { type ->
                         fillType(param.type)
                         parameter.setType(type)
@@ -177,49 +182,36 @@ class ClientProcessor(
         val declarations = throws.getClassListArgument(Throws::exceptionClasses)
         val exceptionTypeNames = mutableSetOf<TypeName>()
         for (declaration in declarations) {
-            collectExceptionTypeNames(declaration, exceptionTypeNames)
+            if (declaration.annotation(ClientException::class) !== null) {
+                collectExceptionTypeNames(clientExceptionContext[declaration], exceptionTypeNames)
+            }
         }
         return exceptionTypeNames
     }
 
-    private fun collectExceptionTypeNames(declaration: KSClassDeclaration, exceptionTypeNames: MutableSet<TypeName>) {
-        val typeName = declaration.toTypeName();
-        if (typeName in exceptionTypeNames) {
-            return
+    private fun collectExceptionTypeNames(metadata: ClientExceptionMetadata, exceptionTypeNames: MutableSet<TypeName>) {
+        if (metadata.code != null) {
+            exceptionTypeNames += metadata.declaration.toTypeName()
         }
-        val clientException = declaration.annotation(ClientException::class) ?: return
-        val code = clientException[ClientException::code] ?: ""
-        val subTypes = clientException.getClassListArgument(ClientException::subTypes)
-        if (code.isEmpty() && subTypes.isEmpty()) {
-            throw MetaException(
-                declaration,
-                "Illegal client exception, neither `code` nor `subTypes` of the annotation \"@" +
-                    ClientException::class.java.getName() +
-                    "\" is specified"
-            )
-        }
-        if (code.isNotEmpty() && subTypes.isNotEmpty()) {
-            throw MetaException(
-                declaration,
-                ("Illegal client exception, both `code` and `subTypes` of the annotation \"@" +
-                    ClientException::class.java.getName() +
-                    "\" is specified")
-            )
-        }
-        if (code.isNotEmpty()) {
-            exceptionTypeNames += typeName
-        } else {
-            for (subType in subTypes) {
-                collectExceptionTypeNames(subType, exceptionTypeNames)
-            }
+        for (subMetadata in metadata.subMetadatas) {
+            collectExceptionTypeNames(subMetadata, exceptionTypeNames)
         }
     }
 
     private fun SchemaBuilder<KSDeclaration>.fillType(type: KSTypeReference) {
-        val resolvedType = type.resolve()
-        determineNullity(resolvedType)
-        determineFetchBy(type)
-        determineTypeNameAndArguments(resolvedType)
+        val typeRef = current<TypeRefImpl<KSDeclaration>>()
+        try {
+            val resolvedType = type.resolve()
+            determineNullity(resolvedType)
+            determineFetchBy(type)
+            determineTypeNameAndArguments(resolvedType)
+            typeRef.removeOptional()
+        } catch (ex: JsonValueTypeChangeException) {
+            typeRef.replaceBy(
+                ex.typeRef,
+                typeRef.isNullable || ex.typeRef.isNullable
+            )
+        }
     }
 
     private fun SchemaBuilder<KSDeclaration>.determineNullity(type: KSType) {
@@ -234,16 +226,13 @@ class ClientProcessor(
             .firstOrNull { it.fullName == FetchBy::class.qualifiedName }
             ?: return
         val entityType = typeReference.resolve()
-        entityType.declaration.run {
-            annotation(Immutable::class) !== null ||
-                annotation(Entity::class) !== null ||
-                annotation(MappedSuperclass::class) !== null ||
-                annotation(Embeddable::class) !== null
-        }.takeIf { it } ?: throw MetaException(
-            ancestorSource(ApiOperationImpl::class.java, ApiParameterImpl::class.java),
-            ancestorSource(),
-            "Illegal type because \"$entityType\" which is decorated by `@FetchBy` is not entity type"
-        )
+        if (entityType.declaration.annotation(Entity::class) == null) {
+            throw MetaException(
+                ancestorSource(ApiOperationImpl::class.java, ApiParameterImpl::class.java),
+                ancestorSource(),
+                "Illegal type because \"$entityType\" which is decorated by `@FetchBy` is not entity type"
+            )
+        }
         val constant = fetchBy[FetchBy::value] ?: throw MetaException(
             ancestorSource(ApiOperationImpl::class.java, ApiParameterImpl::class.java),
             ancestorSource(),
@@ -322,6 +311,7 @@ class ClientProcessor(
         }
         typeRef.fetchBy = constant
         typeRef.fetcherOwner = owner.toTypeName()
+        typeRef.fetcherDoc = Doc.parse(field.docString)
     }
 
     private fun SchemaBuilder<KSDeclaration>.determineTypeNameAndArguments(type: KSType) {
@@ -331,6 +321,9 @@ class ClientProcessor(
             return
         }
         typeRef.typeName = type.realDeclaration.toTypeName()
+        jsonValueTypeRef(typeRef.typeName)?.let {
+            throw JsonValueTypeChangeException(it)
+        }
         if (typeRef.typeName == TypeName.OBJECT) {
             throw UnambiguousTypeException(
                 ancestorSource(ApiOperationImpl::class.java, ApiParameterImpl::class.java),
@@ -358,15 +351,49 @@ class ClientProcessor(
         }
     }
 
+    private fun SchemaBuilder<KSDeclaration>.jsonValueTypeRef(typeName: TypeName): TypeRefImpl<KSDeclaration>? {
+        val declaration = ctx.resolver.getClassDeclarationByName(typeName.toString()) ?: return null
+        val jsonValueFun = declaration
+            .getDeclaredFunctions()
+            .firstOrNull {
+                it.annotation(JsonValue::class) !== null &&
+                    it.parameters.isEmpty() &&
+                    it.returnType?.realDeclaration?.qualifiedName?.asString() != "kotlin.Unit"
+            } ?: return null
+        if (!jsonValueTypeNameStack.add(typeName)) {
+            throw MetaException(
+                ancestorSource(ApiOperationImpl::class.java, ApiParameterImpl::class.java),
+                ancestorSource(),
+                "Cannot resolve \"@" +
+                    JsonValue::class.java.getName() +
+                    "\" because of dead recursion: " +
+                    jsonValueTypeNameStack
+            )
+        }
+        try {
+            var result: TypeRefImpl<KSDeclaration>? = null
+            typeRef {
+                fillType(jsonValueFun.returnType!!)
+                result = it
+            }
+            return result
+        } finally {
+            jsonValueTypeNameStack.remove(typeName);
+        }
+        return null
+    }
+
     private fun SchemaBuilder<KSDeclaration>.fillDefinition(declaration: KSClassDeclaration, immutable: Boolean) {
+
+        val definition = current<TypeDefinitionImpl<KSDeclaration>>()
+        definition.isApiIgnore = declaration.annotation(ApiIgnore::class) !== null
+        definition.doc = Doc.parse(declaration.docString)
 
         if (declaration.classKind == ClassKind.ENUM_CLASS) {
             fillEnumDefinition(declaration)
             return
         }
 
-        val definition = current<TypeDefinitionImpl<KSDeclaration>>()
-        definition.isApiIgnore = declaration.annotation(ApiIgnore::class) !== null
         definition.kind = if (immutable) {
             TypeDefinition.Kind.IMMUTABLE
         } else {
@@ -374,16 +401,40 @@ class ClientProcessor(
         }
 
         if (!immutable || declaration.classKind == ClassKind.INTERFACE) {
+            val isClientException = declaration.annotation(ClientException::class) != null
             for (propDeclaration in declaration.getDeclaredProperties()) {
-                if (!propDeclaration.isPublic()) {
+                if (!propDeclaration.isPublic() ||
+                    propDeclaration.annotation(ApiIgnore::class) != null ||
+                    propDeclaration.annotation(JsonIgnore::class) != null) {
                     continue
                 }
+                if (isClientException &&
+                    propDeclaration.name.let { it == "code" || it == "fields" }) {
+                    continue
+                }
+                val ksTypeReference = declaration
+                    .takeIf { immutable }
+                    ?.let {
+                        ctx.typeOf(declaration)
+                            .properties[propDeclaration.name]!!
+                            .converterMetadata
+                            ?.targetType
+                    }
+                    ?.let {
+                        val resolver = ctx.resolver
+                        when (it.variance) {
+                            Variance.STAR -> resolver.createKSTypeReferenceFromKSType(resolver.builtIns.anyType.makeNullable())
+                            Variance.CONTRAVARIANT -> resolver.createKSTypeReferenceFromKSType(resolver.builtIns.anyType)
+                            else -> it.type
+                        }
+                    } ?: propDeclaration.type
                 prop(propDeclaration, propDeclaration.name) { prop ->
                     try {
                         typeRef { type ->
-                            fillType(propDeclaration.type)
+                            fillType(ksTypeReference)
                             prop.setType(type)
                         }
+                        prop.doc = Doc.parse(propDeclaration.docString)
                         definition.addProp(prop)
                     } catch (ex: UnambiguousTypeException) {
                         // Do nothing
@@ -399,7 +450,9 @@ class ClientProcessor(
                     if (returnTypeName == "kotlin.Unit") {
                         continue
                     }
-                    val name = StringUtil.propName(funcDeclaration.simpleName.asString(), returnTypeName == "kotlin.Boolean")
+                    val name = StringUtil
+                        .propName(funcDeclaration.simpleName.asString(), returnTypeName == "kotlin.Boolean")
+                        ?: continue
                     prop(funcDeclaration, name) { prop ->
                         typeRef { type ->
                             fillType(returnTypReference)
@@ -408,6 +461,16 @@ class ClientProcessor(
                         definition.addProp(prop)
                     }
                 }
+            }
+        }
+
+        if (declaration.annotation(ClientException::class) != null) {
+            val metadata = clientExceptionContext[declaration]
+            if (metadata.code !== null) {
+                definition.error = TypeDefinition.Error(
+                    metadata.family,
+                    metadata.code
+                )
             }
         }
 
@@ -432,56 +495,14 @@ class ClientProcessor(
     private fun SchemaBuilder<KSDeclaration>.fillEnumDefinition(declaration: KSClassDeclaration) {
 
         val definition = current<TypeDefinitionImpl<KSDeclaration>>()
-        definition.isApiIgnore = declaration.annotation(ApiIgnore::class) !== null
-
         definition.kind = TypeDefinition.Kind.ENUM
-
-        fillErrorProps(declaration)
 
         for (childDeclaration in declaration.declarations) {
             if (childDeclaration is KSClassDeclaration) {
                 constant(childDeclaration, childDeclaration.simpleName.asString()) {
-                    fillErrorProps(childDeclaration)
+                    it.doc = Doc.parse(childDeclaration.docString)
                     definition.addEnumConstant(it)
                 }
-            }
-        }
-    }
-
-    private fun SchemaBuilder<KSDeclaration>.fillErrorProps(declaration: KSDeclaration) {
-        val errorFields = declaration
-            .annotation(ErrorFields::class)
-            ?.let { it.get<List<KSAnnotation>>("value") }
-            ?.takeIf { it.isNotEmpty() }
-            ?: declaration
-                .annotation(ErrorField::class)
-                ?.let { listOf(it) }
-                ?: return
-        val container = current<ErrorPropContainerNode<KSDeclaration>>()
-        for (errorField in errorFields) {
-            val name = errorField[ErrorField::name]
-            val typeDeclaration = errorField.getClassArgument(ErrorField::type)!!
-            val isList = errorField[ErrorField::list] ?: false
-            val isNullable = errorField[ErrorField::nullable] ?: false
-            val doc = errorField[ErrorField::doc]?.takeIf { it.isNotEmpty() }
-            prop(declaration, name) { prop ->
-                typeRef { type ->
-                    type.typeName = typeDeclaration.toTypeName()
-                    val finalType = if (isList) {
-                        val listType = TypeRefImpl<KSDeclaration>()
-                        listType.typeName = TypeName.LIST
-                        listType.addArgument(type)
-                        listType
-                    } else {
-                        type
-                    }
-                    finalType.isNullable = isNullable
-                    prop.setType(finalType)
-                    if (doc != null) {
-                        prop.doc = Doc.parse(doc)
-                    }
-                }
-                container.addErrorProp(prop)
             }
         }
     }
@@ -525,6 +546,10 @@ class ClientProcessor(
         cause: Throwable? = null
     ) : MetaException(declaration, childDeclaration, reason, cause)
 
+    private class JsonValueTypeChangeException(
+        val typeRef: TypeRefImpl<KSDeclaration>
+    ): RuntimeException()
+
     companion object {
 
         fun KSDeclaration.toTypeName(): TypeName {
@@ -556,9 +581,12 @@ class ClientProcessor(
                 }
             }
 
-        private val FETCH_BY_NAME = TypeName.of(
-            FetchBy::class.java
-        )
+        private fun TypeRefImpl<KSDeclaration>.removeOptional() {
+            if (typeName == TypeName.OPTIONAL) {
+                val target = arguments[0] as TypeRefImpl<KSDeclaration>
+                replaceBy(target, null)
+            }
+        }
 
         private val CODE_BASED_EXCEPTION_NAME = TypeName.of(
             CodeBasedException::class.java

@@ -1,6 +1,7 @@
 package org.babyfish.jimmer.client.java.model;
 
-import org.babyfish.jimmer.client.Doc;
+import org.babyfish.jimmer.jackson.JsonConverter;
+import org.babyfish.jimmer.jackson.LongToStringConverter;
 import org.babyfish.jimmer.sql.Entity;
 import org.babyfish.jimmer.sql.Id;
 import org.babyfish.jimmer.sql.ManyToMany;
@@ -11,6 +12,7 @@ import java.util.List;
 public interface Author {
 
     @Id
+    @JsonConverter(LongToStringConverter.class)
     long id();
 
     String firstName();
@@ -19,7 +21,6 @@ public interface Author {
 
     Gender gender();
 
-    @Doc("All the books i have written")
     @ManyToMany(mappedBy = "authors")
     List<Book> books();
 }

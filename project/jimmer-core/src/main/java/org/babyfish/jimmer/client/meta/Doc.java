@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.type.MapType;
 import com.fasterxml.jackson.databind.type.SimpleType;
+import org.jetbrains.annotations.Nullable;
 
 import javax.lang.model.element.TypeElement;
 import java.io.BufferedReader;
@@ -27,6 +28,8 @@ public class Doc {
     private final String returnValue;
 
     private final Map<String, String> propertyValueMap;
+
+    private String toString;
 
     @JsonCreator
     public Doc(
@@ -67,16 +70,35 @@ public class Doc {
 
     @Override
     public String toString() {
-        return "Doc{" +
-                "value='" + value + '\'' +
-                ", parameterValueMap=" + parameterValueMap +
-                ", returnValue='" + returnValue + '\'' +
-                ", propertyValueMap=" + propertyValueMap +
-                '}';
+        String str = toString;
+        if (str == null) {
+            this.toString = str = toStringImpl();
+        }
+        return str;
+    }
+
+    private String toStringImpl() {
+        StringBuilder builder = new StringBuilder();
+        if (value != null) {
+            builder.append(value).append('\n');
+        }
+        for (Map.Entry<String, String> e : parameterValueMap.entrySet()) {
+            builder.append("@param ").append(e.getKey()).append(' ').append(e.getValue()).append('\n');
+        }
+        for (Map.Entry<String, String> e : propertyValueMap.entrySet()) {
+            builder.append("@property ").append(e.getKey()).append(' ').append(e.getValue()).append('\n');
+        }
+        if (returnValue != null) {
+            builder.append("@return ").append(returnValue).append('\n');
+        }
+        return builder.toString();
     }
 
     public static Doc parse(String doc) {
-        if (doc == null) {
+        if (doc != null) {
+            doc = doc.trim(); // KSP does not trim the documentation
+        }
+        if (doc == null || doc.isEmpty()) {
             return null;
         }
 
@@ -141,13 +163,33 @@ public class Doc {
                 } else if (line.startsWith("@", start)) {
                     builder.switchToIgnored();
                 } else {
-                    builder.append(line.substring(start));
+                    if (line.charAt(0) <= ' ') {
+                        builder.append(line.substring(1));
+                    } else {
+                        builder.append(line);
+                    }
                 }
             }
         } catch (IOException ex) {
             throw new AssertionError("Cannot parse documentation comment");
         }
         return builder.build();
+    }
+
+    public static String valueOf(@Nullable Doc doc) {
+        return doc != null ? doc.getValue() : null;
+    }
+
+    public static String returnOf(@Nullable Doc doc) {
+        return doc != null ? doc.getReturnValue() : null;
+    }
+
+    public static String paramOf(@Nullable Doc doc, String param) {
+        return doc != null ? doc.getParameterValueMap().get(param) : null;
+    }
+
+    public static String propertyOf(@Nullable Doc doc, String property) {
+        return doc != null ? doc.getPropertyValueMap().get(property) : null;
     }
 
     private static int indexOfNonWhiteSpace(String line, int start) {
@@ -283,7 +325,7 @@ public class Doc {
 
             String value;
             Map<String, String> parameters;
-            String returnValue = null;
+            String returnValue;
             Map<String, String> properties;
 
             JsonNode jsonNode = jp.getCodec().readTree(jp);

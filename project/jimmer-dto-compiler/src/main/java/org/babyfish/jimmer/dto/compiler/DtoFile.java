@@ -6,6 +6,8 @@ import java.util.List;
 
 public final class DtoFile {
 
+    private final OsFile osFile;
+
     private final String projectDir;
 
     private final String dtoDir;
@@ -16,9 +18,8 @@ public final class DtoFile {
 
     private final String path;
 
-    private final ReaderOpener readerOpener;
-
-    public DtoFile(String projectDir, String dtoDir, List<String> packagePaths, String name, ReaderOpener readerOpener) {
+    public DtoFile(OsFile osFile, String projectDir, String dtoDir, List<String> packagePaths, String name) {
+        this.osFile = osFile;
         this.projectDir = projectDir;
         this.dtoDir = dtoDir;
         this.packageName = String.join(".", packagePaths);
@@ -26,7 +27,18 @@ public final class DtoFile {
         this.path = '<' + projectDir + '>' + '/' + dtoDir +
                 (packagePaths.isEmpty() ? "" : '/' + String.join("/", packagePaths)) +
                 '/' + name;
-        this.readerOpener = readerOpener;
+    }
+
+    public OsFile getOsFile() {
+        return osFile;
+    }
+
+    public String getAbsolutePath() {
+        return osFile.getAbsolutePath();
+    }
+
+    public Reader openReader() throws IOException {
+        return osFile.openReader();
     }
 
     public String getProjectDir() {
@@ -49,10 +61,6 @@ public final class DtoFile {
         return path;
     }
 
-    public Reader openReader() throws IOException {
-        return readerOpener.open();
-    }
-
     @Override
     public int hashCode() {
         return path.hashCode();
@@ -71,10 +79,5 @@ public final class DtoFile {
     @Override
     public String toString() {
         return path;
-    }
-
-    @FunctionalInterface
-    public interface ReaderOpener {
-        Reader open() throws IOException;
     }
 }

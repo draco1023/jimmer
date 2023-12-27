@@ -1,9 +1,15 @@
 import java.time.LocalDateTime
 import testpkg.annotations.{Job, Task, Priority, Shallow, Deep }
 
+/**
+ * BookView: Document for DTO language
+ */
 @Shallow
 BookView {
 
+    /**
+     * The name of DTO type BookView
+     */
     @Shallow
     name
 
@@ -13,13 +19,13 @@ BookView {
     @Shallow
     id
 
-    store @Deep {
+    store /** BookView.store: Document for DTO language */ @Deep {
 
         @Deep
         name
     }
 
-    authors @Deep {
+    authors /** BookVIew.authors: Document for DTO language */ @Deep {
 
         @Deep
         firstName

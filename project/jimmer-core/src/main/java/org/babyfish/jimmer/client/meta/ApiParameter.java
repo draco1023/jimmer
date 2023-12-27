@@ -5,4 +5,6 @@ public interface ApiParameter {
     String getName();
 
     TypeRef getType();
+
+    int getOriginalIndex();
 }

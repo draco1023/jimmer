@@ -3,6 +3,7 @@ package org.babyfish.jimmer.client.meta.impl;
 import org.babyfish.jimmer.client.meta.*;
 import org.jetbrains.annotations.Nullable;
 
+import javax.lang.model.element.Element;
 import java.security.Principal;
 import java.util.*;
 import java.util.function.Consumer;
@@ -17,11 +18,11 @@ public abstract class SchemaBuilder<S> {
 
     @SuppressWarnings("unchecked")
     public SchemaBuilder(Schema original) {
-        Map<String, ApiServiceImpl<S>> serviceMap = null;
+        Map<TypeName, ApiServiceImpl<S>> serviceMap = null;
         if (original != null) {
-            serviceMap = (Map<String, ApiServiceImpl<S>>) (Map<?, ?>) original.getApiServiceMap();
+            serviceMap = (Map<TypeName, ApiServiceImpl<S>>) (Map<?, ?>) original.getApiServiceMap();
             serviceMap = new TreeMap<>(serviceMap);
-            serviceMap.keySet().removeIf(s -> loadSource(s) == null);
+            serviceMap.keySet().removeIf(s -> loadSource(s.toString()) == null);
         }
         SchemaImpl<S> schema = new SchemaImpl<>(serviceMap);
         stack.push(schema);
@@ -60,8 +61,8 @@ public abstract class SchemaBuilder<S> {
         return (X) stack.peek();
     }
 
-    public void api(S source, String className, Consumer<ApiServiceImpl<S>> block) {
-        run(new ApiServiceImpl<>(source, className), block);
+    public void api(S source, TypeName typeName, Consumer<ApiServiceImpl<S>> block) {
+        run(new ApiServiceImpl<>(source, typeName), block);
     }
 
     public void operation(S source, String name, Consumer<ApiOperationImpl<S>> block) {

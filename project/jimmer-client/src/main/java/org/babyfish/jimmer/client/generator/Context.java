@@ -1,384 +1,235 @@
 package org.babyfish.jimmer.client.generator;
 
-import org.babyfish.jimmer.client.generator.ts.TsCodeWriter;
-import org.babyfish.jimmer.client.meta.*;
+import org.babyfish.jimmer.client.EnableImplicitApi;
+import org.babyfish.jimmer.client.meta.Api;
+import org.babyfish.jimmer.client.runtime.*;
+import org.babyfish.jimmer.client.source.Source;
+import org.babyfish.jimmer.client.source.SourceManager;
 
-import java.io.OutputStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
-public class Context {
+public abstract class Context {
 
-    private static final Comparator<Service> SERVICE_COMPARATOR =
-            Comparator.comparing(a -> a.getJavaType().getName());
-
-    private static final Comparator<ImmutableObjectType> DTO_COMPARATOR =
-            Comparator
-                    .comparing(Context::totalPropCount)
-                    .thenComparing((ImmutableObjectType it) -> it.getJavaType().getName())
-                    .thenComparing((ImmutableObjectType it) -> {
-                        FetchByInfo info = it.getFetchByInfo();
-                        return info != null ? info.getOwnerType().getName() : "";
-                    })
-                    .thenComparing((ImmutableObjectType it) -> {
-                        FetchByInfo info = it.getFetchByInfo();
-                        return info != null ? info.getConstant() : "";
-                    });
-
-    private final OutputStream out;
-
-    private final File moduleFile;
-
-    private final File moduleErrorsFile;
+    private final Metadata metadata;
 
     private final String indent;
 
-    private final Map<Class<?>, List<ImmutableObjectType>> dtoMap;
+    SourceManager sourceManager;
 
-    private final Map<Class<?>, StaticObjectType> genericTypeMap;
-
-    private final Map<Operation, String> operationNameMap;
-
-    private final NavigableMap<Service, File> serviceFileMap;
-
-    private final Map<Type, File> typeFileMap;
-
-    private final Namespace<Class<?>> fetchByOwnerNamespace;
-
-    private final Namespace<Class<?>> dtoPrefixNamespace;
-
-    public Context(Metadata metadata, OutputStream out, String moduleName, int indent) {
-        this.out = out;
-        this.moduleFile = new File("", moduleName);
-        this.moduleErrorsFile = new File("", moduleName + "Errors");
-        if (indent < 2) {
-            throw new IllegalArgumentException("indent cannot be less than 2");
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = indent; i > 0; --i) {
-            builder.append(' ');
-        }
-        this.indent = builder.toString();
-        this.genericTypeMap = metadata.getGenericTypes();
-
-        VisitorImpl impl = new VisitorImpl();
-        for (Service service : metadata.getServices().values()) {
-            service.accept(impl);
-        }
-        for (StaticObjectType genericType : metadata.getGenericTypes().values()) {
-            genericType.accept(impl);
-        }
-
-        operationNameMap = impl.operationNamespace.getNameMap();
-
-        Map<Class<?>, List<ImmutableObjectType>> dtoMap = new HashMap<>();
-        for (ImmutableObjectType immutableObjectType : metadata.getFetchedImmutableObjectTypes().values()) {
-            dtoMap
-                    .computeIfAbsent(immutableObjectType.getJavaType(), it -> new ArrayList<>())
-                    .add(immutableObjectType);
-        }
-        for (ImmutableObjectType immutableObjectType : metadata.getViewImmutableObjectTypes().values()) {
-            dtoMap
-                    .computeIfAbsent(immutableObjectType.getJavaType(), it -> new ArrayList<>())
-                    .add(immutableObjectType);
-        }
-        for (Map.Entry<Class<?>, List<ImmutableObjectType>> e : dtoMap.entrySet()) {
-            List<ImmutableObjectType> types = e.getValue();
-            types.sort(DTO_COMPARATOR);
-            e.setValue(Collections.unmodifiableList(types));
-        }
-        this.dtoMap = Collections.unmodifiableMap(dtoMap);
-
-        NavigableMap<Service, File> map = new TreeMap<>(SERVICE_COMPARATOR);
-        map.putAll(impl.serviceFileManager.getFileMap());
-        serviceFileMap = Collections.unmodifiableNavigableMap(map);
-
-        typeFileMap = impl.typeFileManager.getFileMap();
-
-        fetchByOwnerNamespace = impl.fetchByOwnerNamespace;
-
-        dtoPrefixNamespace = new Namespace<>(clazz -> staticTypeName(clazz) + "Dto");
+    protected Context(Metadata metadata, String indent) {
+        this.metadata = metadata;
+        this.indent = indent != null && !indent.isEmpty() ? indent : "    ";
     }
 
-    public OutputStream getOutputStream() {
-        return out;
+    private void init() {
+        if (this.sourceManager != null) {
+            return;
+        }
+        this.sourceManager = createSourceManager();
+        Set<Type> handledTypes = new HashSet<>();
+        for (Service service : metadata.getServices()) {
+            sourceManager.getSource(service);
+            for (Operation operation : service.getOperations()) {
+                sourceManager.getSource(operation);
+                Type returnType = operation.getReturnType();
+                if (returnType != null) {
+                    initSource(returnType, handledTypes);
+                }
+                for (Parameter parameter : operation.getParameters()) {
+                    initSource(parameter.getType(), handledTypes);
+                }
+                for (ObjectType exceptionType : operation.getExceptionTypes()) {
+                    initSource(exceptionType, handledTypes);
+                }
+            }
+        }
+        sourceManager.createAdditionalSources();
     }
 
-    public File getModuleFile() {
-        return moduleFile;
+    private void initSource(Type type, Set<Type> handledTypes) {
+        if (!handledTypes.add(type)) {
+            return;
+        }
+        if (type instanceof ObjectType) {
+            ObjectType objectType = (ObjectType) type;
+            switch (objectType.getKind()) {
+                case FETCHED:
+                    sourceManager.getSource(objectType);
+                    return;
+                case DYNAMIC:
+                case EMBEDDABLE:
+                case STATIC:
+                    sourceManager.getSource(objectType);
+                    for (Type argument : objectType.getArguments()) {
+                        initSource(argument, handledTypes);
+                    }
+                    // No break
+                default:
+                    for (Property property : objectType.getProperties().values()) {
+                        initSource(property.getType(), handledTypes);
+                    }
+            }
+        } else if (type instanceof NullableType) {
+            initSource(((NullableType)type).getTargetType(), handledTypes);
+        } else if (type instanceof ListType) {
+            initSource(((ListType)type).getElementType(), handledTypes);
+        } else if (type instanceof MapType) {
+            initSource(((MapType)type).getKeyType(), handledTypes);
+            initSource(((MapType)type).getValueType(), handledTypes);
+        } else {
+            sourceManager.getSource(type);
+        }
     }
 
-    public File getModuleErrorsFile() {
-        return moduleErrorsFile;
+    public Metadata getMetadata() {
+        return metadata;
     }
 
     public String getIndent() {
         return indent;
     }
 
-    public File getFile(Service service) {
-        if (service == null) {
-            throw new IllegalArgumentException("service cannot be null");
+    public Collection<Source> getRootSources() {
+        init();
+        return sourceManager.getRootSources();
+    }
+
+    public Source getRootSource(String name) {
+        init();
+        return sourceManager.getRootSource(name);
+    }
+
+    public Source getSource(Service service) {
+        init();
+        return sourceManager.getSource(service);
+    }
+
+    public Source getSource(Operation operation) {
+        init();
+        return sourceManager.getSource(operation);
+    }
+
+    public void renderAll(OutputStream outputStream) {
+        ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream);
+        try {
+            renderAll(zipOutputStream);
+            zipOutputStream.finish();
+        } catch (IOException ex) {
+            throw new GeneratorException("Cannot write source code into zip output stream", ex);
         }
-        return serviceFileMap.get(service);
     }
 
-    public File getFile(Type type) {
-        return typeFileMap.get(rawType(type));
-    }
-
-    public String getOperationName(Operation operation) {
-        return operationNameMap.get(operation);
-    }
-
-    public Map<Service, File> getServiceFileMap() {
-        return serviceFileMap;
-    }
-
-    public Iterable<Map.Entry<Type, File>> getTypeFilePairs() {
-        return () -> typeFileMap.entrySet().iterator();
-    }
-
-    public Map<Class<?>, List<ImmutableObjectType>> getDtoMap() {
-        return dtoMap;
-    }
-
-    public String getDtoPrefix(Class<?> rawType) {
-        return dtoPrefixNamespace.get(rawType);
-    }
-
-    public String getDtoSuffix(ImmutableObjectType type) {
-        FetchByInfo fetchByInfo = type.getFetchByInfo();
-        if (fetchByInfo != null) {
-            return fetchByOwnerNamespace.get(fetchByInfo.getOwnerType()) + "/" + fetchByInfo.getConstant();
+    private void renderAll(ZipOutputStream zipOutputStream) throws IOException {
+        init();
+        if (metadata.getServices().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "There no exported API to render client code, please " +
+                            "1. Used \"@" + EnableImplicitApi.class.getName() + "\" to decorate any class; " +
+                            "2. Used \"@" + Api.class.getName() + "\" to decorates all controllers and all operations. "
+            );
         }
-        if (type.getCategory() == ImmutableObjectType.Category.VIEW) {
-            return "DEFAULT";
-        }
-        return null;
-    }
 
-    private Type rawType(Type type) {
-        if (type instanceof StaticObjectType) {
-            StaticObjectType staticObjectType = (StaticObjectType) type;
-            if (!staticObjectType.getTypeArguments().isEmpty()) {
-                return genericTypeMap.get(staticObjectType.getJavaType());
+        Writer writer = new OutputStreamWriter(zipOutputStream, StandardCharsets.UTF_8);
+        Map<List<String>, List<Source>> sourceMultiMap = sourceManager
+                .getRootSources()
+                .stream()
+                .collect(
+                        Collectors.groupingBy(
+                                Source::getDirs,
+                                LinkedHashMap::new,
+                                Collectors.toList()
+                        )
+                );
+        String suffix = '.' + getFileExtension();
+        boolean isIndexRequired = isIndexRequired();
+        for (Map.Entry<List<String>, List<Source>> e : sourceMultiMap.entrySet()) {
+            String dir = String.join("/", e.getKey());
+            if (!dir.isEmpty()) {
+                dir += '/';
+            }
+            List<Source> sources = e.getValue();
+            if (isIndexRequired) {
+                zipOutputStream.putNextEntry(new ZipEntry(dir + "index" + suffix));
+                renderIndex(sources, writer);
+                writer.flush();
+            }
+            for (Source source : sources) {
+                zipOutputStream.putNextEntry(new ZipEntry(dir + source.getName() + suffix));
+                render(source, writer);
+                writer.flush();
             }
         }
-        return type;
     }
 
-    private static int totalPropCount(ImmutableObjectType type) {
-        int count = type.getProperties().size();
-        for (Property prop : type.getProperties().values()) {
-            if (prop.getType() instanceof ImmutableObjectType) {
-                count += totalPropCount((ImmutableObjectType) prop.getType());
+    public void render(Source source, Writer writer) {
+        init();
+        SourceWriter codeWriter = this.createCodeWriter(this, source);
+        StringWriter headWriter = new StringWriter();
+        StringWriter bodyWriter = new StringWriter();
+        codeWriter.setWriter(bodyWriter);
+        source.getRender().render(codeWriter);
+        codeWriter.setWriter(headWriter);
+        codeWriter.onFlushImportedTypes();
+        try {
+            String head = headWriter.toString();
+            if (!head.isEmpty()) {
+                writer.write(head);
+                writer.write('\n');
             }
+            writer.write(bodyWriter.toString());
+        } catch (IOException ex) {
+            throw new GeneratorException("Failed to write code for " + source);
         }
-        return count;
     }
 
-    protected String dynamicTypeName(ImmutableObjectType type) {
-        return type.getJavaType().getSimpleName();
+    public void renderIndex(String dir, Writer writer) {
+        if (!isIndexRequired()) {
+            return;
+        }
+        init();
+        List<String> dirs = SourceManager.dirs(dir);
+        List<Source> sources = sourceManager
+                .getRootSources()
+                .stream()
+                .filter(it -> it.getDirs().equals(dirs))
+                .collect(Collectors.toList());
+        renderIndex(sources, writer);
     }
 
-    private String staticTypeName(Class<?> type) {
-        Class<?> declaringClass = type.getDeclaringClass();
-        if (declaringClass == null) {
-            return type.getSimpleName();
+    private void renderIndex(List<Source> sources, Writer writer) {
+        StringWriter headWriter = new StringWriter();
+        StringWriter bodyWriter = new StringWriter();
+        for (Source source : sources) {
+            SourceWriter codeWriter = this.createCodeWriter(this, source);
+            codeWriter.setWriter(bodyWriter);
+            source.getRender().export(codeWriter);
+            codeWriter.setWriter(headWriter);
+            codeWriter.onFlushImportedTypes();
         }
-        return staticTypeName(declaringClass) + nestedTypeSeparator() + type.getSimpleName();
-    }
-
-    protected String staticDirName() {
-        return "model/static";
-    }
-
-    protected String nestedTypeSeparator() {
-        return ".";
-    }
-
-    private class VisitorImpl implements Visitor {
-
-        private Set<StaticObjectType> visitedStaticTypes = new HashSet<>();
-
-        private String serviceName;
-
-        final Namespace<Service> serviceNamespace = new Namespace<>(
-                service -> staticTypeName(service.getJavaType())
-        );
-
-        final Namespace<Operation> operationNamespace = new Namespace<>(
-                operation -> serviceName + "::" + operation.getName(),
-                name -> name.substring(name.indexOf("::") + 2)
-        );
-
-        final Namespace<Type> typeNamespace = new Namespace<>(
-                type -> {
-                    if (type instanceof SimpleType) {
-                        return TsCodeWriter.SIMPLE_TYPE_NAMES.get(((SimpleType)type).getJavaType());
-                    }
-                    if (type instanceof ImmutableObjectType) {
-                        return dynamicTypeName((ImmutableObjectType)type);
-                    } else if (type instanceof StaticObjectType) {
-                        Class<?> javaType = ((StaticObjectType)type).getJavaType();
-                        return staticTypeName(javaType);
-                    } else if (type instanceof EnumType) {
-                        return staticTypeName(((EnumType)type).getJavaType());
-                    }
-                    return null;
-                }
-        );
-
-        final FileManager<Service> serviceFileManager = new FileManager<>(
-                service -> "services",
-                serviceNamespace
-        );
-
-        final FileManager<Type> typeFileManager = new FileManager<>(
-                type -> {
-                    if (!type.hasDefinition()) {
-                        return null;
-                    }
-                    if (type instanceof ImmutableObjectType) {
-                        return "model/entities";
-                    } else if (type instanceof StaticObjectType) {
-                        return staticDirName();
-                    } else if (type instanceof EnumType) {
-                        return "model/enums";
-                    }
-                    return null;
-                },
-                typeNamespace
-        );
-
-        final Namespace<Class<?>> fetchByOwnerNamespace = new Namespace<>(Context.this::staticTypeName);
-
-        private final Map<Class<?>, List<ImmutableObjectType>> dtoMap = new HashMap<>();
-
-        @Override
-        public void visitingService(Service service) {
-            serviceName = serviceFileManager.add(service).getName();
-            // Keep some fetcher owner names are same with service names
-            fetchByOwnerNamespace.get(service.getClass());
-        }
-
-        @Override
-        public void visitedService(Service service) {
-            serviceName = null;
-        }
-
-        @Override
-        public void visitingOperation(Operation operation) {
-            operationNamespace.get(operation);
-        }
-
-        @Override
-        public boolean isTypeVisitable(Type type) {
-            return !typeFileManager.getFileMap().containsKey(type);
-        }
-
-        @Override
-        public void visitImmutableObjectType(ImmutableObjectType immutableObjectType) {
-            if (typeFileManager.add(immutableObjectType) == null) {
-                dtoMap
-                        .computeIfAbsent(immutableObjectType.getJavaType(), it -> new ArrayList<>())
-                        .add(immutableObjectType);
+        try {
+            String head = headWriter.toString();
+            if (!head.isEmpty()) {
+                writer.write(head);
+                writer.write('\n');
             }
-        }
-
-        @Override
-        public boolean visitStaticObjectType(StaticObjectType staticObjectType) {
-            if (visitedStaticTypes.add(staticObjectType)) {
-                while (staticObjectType.getDeclaringObjectType() != null) {
-                    staticObjectType = staticObjectType.getDeclaringObjectType();
-                }
-                typeFileManager.add(staticObjectType);
-                return true;
-            }
-            return false;
-        }
-
-        @Override
-        public void visitEnumType(EnumType enumType) {
-            typeFileManager.add(enumType);
+            writer.write(bodyWriter.toString());
+        } catch (IOException ex) {
+            throw new GeneratorException("Failed to write index for " + String.join("/", sources.get(0).getDirs()));
         }
     }
 
-    private static class Namespace<T> {
+    protected abstract SourceManager createSourceManager();
 
-        private final Map<T, String> nameMap = new IdentityHashMap<>();
+    protected abstract SourceWriter createCodeWriter(Context ctx, Source source);
 
-        private final Map<String, Integer> nameCountMap = new HashMap<>();
-
-        private final Function<T, String> initializer;
-
-        private final Function<String, String> terminator;
-
-        Namespace(Function<T, String> initializer) {
-            this.initializer = initializer;
-            this.terminator = null;
-        }
-
-        Namespace(Function<T, String> initializer, Function<String, String> terminator) {
-            this.initializer = initializer;
-            this.terminator = terminator;
-        }
-
-        public String get(T node) {
-            String name = nameMap.get(node);
-            if (name == null) {
-                name = initializer.apply(node);
-                Integer count = nameCountMap.get(name);
-                if (count == null) {
-                    nameCountMap.put(name, 1);
-                } else {
-                    count++;
-                    nameCountMap.put(name, count);
-                    name = name + '_' + count;
-                }
-                if (terminator != null) {
-                    name = terminator.apply(name);
-                }
-                nameMap.put(node, name);
-            }
-            return name;
-        }
-
-        public Map<T, String> getNameMap() {
-            return Collections.unmodifiableMap(nameMap);
-        }
+    protected boolean isIndexRequired() {
+        return false;
     }
 
-    private static class FileManager<N extends Node> {
-
-        private final Map<N, File> fileMap = new IdentityHashMap<>();
-
-        private final Function<N, String> dirSupplier;
-
-        private final Namespace<N> namespace;
-
-        private FileManager(Function<N, String> dirSupplier, Namespace<N> namespace) {
-            this.dirSupplier = dirSupplier;
-            this.namespace = namespace;
-        }
-
-        public File add(N node) {
-            File file = fileMap.get(node);
-            if (file == null && !fileMap.containsKey(node)) {
-                String dir = dirSupplier.apply(node);
-                if (dir == null) {
-                    return null;
-                }
-                String name = namespace.get(node);
-                file = new File(dir, name);
-                fileMap.put(node, file);
-            }
-            return file;
-        }
-
-        public Map<N, File> getFileMap() {
-            return Collections.unmodifiableMap(fileMap);
-        }
-    }
+    protected abstract String getFileExtension();
 }

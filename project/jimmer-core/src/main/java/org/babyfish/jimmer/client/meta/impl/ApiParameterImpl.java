@@ -19,6 +19,8 @@ public class ApiParameterImpl<S> extends AstNode<S> implements ApiParameter {
 
     private TypeRefImpl<S> type;
 
+    private int originalIndex;
+
     ApiParameterImpl(S source, String name) {
         super(source);
         this.name = name;
@@ -36,6 +38,15 @@ public class ApiParameterImpl<S> extends AstNode<S> implements ApiParameter {
 
     public void setType(TypeRefImpl<S> type) {
         this.type = type;
+    }
+
+    @Override
+    public int getOriginalIndex() {
+        return originalIndex;
+    }
+
+    public void setOriginalIndex(int originalIndex) {
+        this.originalIndex = originalIndex;
     }
 
     @Override
@@ -64,6 +75,8 @@ public class ApiParameterImpl<S> extends AstNode<S> implements ApiParameter {
             gen.writeFieldName("name");
             gen.writeString(parameter.getName());
             provider.defaultSerializeField("type", parameter.getType(), gen);
+            gen.writeFieldName("index");
+            gen.writeNumber(parameter.getOriginalIndex());
             gen.writeEndObject();
         }
     }
@@ -76,6 +89,7 @@ public class ApiParameterImpl<S> extends AstNode<S> implements ApiParameter {
             JsonNode jsonNode = jp.getCodec().readTree(jp);
             ApiParameterImpl<Object> parameter = new ApiParameterImpl<>(null, jsonNode.get("name").asText());
             parameter.setType((TypeRefImpl<Object>) ctx.readTreeAsValue(jsonNode.get("type"), TypeRefImpl.class));
+            parameter.setOriginalIndex(jsonNode.get("index").asInt());
             return parameter;
         }
     }

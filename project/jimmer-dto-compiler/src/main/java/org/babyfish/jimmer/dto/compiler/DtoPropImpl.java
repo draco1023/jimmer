@@ -16,12 +16,19 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
 
     private final int baseLine;
 
+    private final int baseCol;
+
     @Nullable
     private final String alias;
 
     private final int aliasLine;
 
+    private final int aliasCol;
+
     private final List<Anno> annotations;
+
+    @Nullable
+    private final String doc;
 
     private final DtoType<T, P> targetType;
 
@@ -42,9 +49,12 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
     DtoPropImpl(
             Map<String, P> basePropMap,
             int baseLine,
+            int baseCol,
             @Nullable String alias,
             int aliasLine,
+            int aliasCol,
             List<Anno> annotations,
+            @Nullable String doc,
             @Nullable DtoType<T, P> targetType,
             @Nullable EnumType enumType,
             Mandatory mandatory,
@@ -55,9 +65,12 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
         this.basePropMap = basePropMap;
         this.nextProp = null;
         this.baseLine = baseLine;
+        this.baseCol = baseCol;
         this.annotations = annotations;
+        this.doc = doc;
         this.alias = alias;
         this.aliasLine = aliasLine;
+        this.aliasCol = aliasCol;
         this.targetType = targetType;
         this.enumType = enumType;
         this.mandatory = mandatory;
@@ -82,9 +95,12 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
         this.basePropMap = head.getBasePropMap();
         this.nextProp = next;
         this.baseLine = next.getBaseLine();
+        this.baseCol = next.getBaseColumn();
         this.alias = next.getAlias();
         this.aliasLine = next.getAliasLine();
+        this.aliasCol = next.getAliasColumn();
         this.annotations = next.getAnnotations();
+        this.doc = next.getDoc();
         this.targetType = next.getTargetType();
         this.enumType = next.getEnumType();
         if (head.isNullable() || next.isNullable()) {
@@ -119,9 +135,12 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
         this.basePropMap = original.getBasePropMap();
         this.nextProp = null;
         this.baseLine = original.getBaseLine();
+        this.baseCol = original.getBaseColumn();
         this.annotations = original.getAnnotations();
+        this.doc = original.getDoc();
         this.alias = getBaseProp().getName();
         this.aliasLine = original.getAliasLine();
+        this.aliasCol = original.getAliasColumn();
         this.targetType = targetType;
         this.enumType = null;
         this.mandatory = original.getMandatory();
@@ -164,8 +183,17 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
     }
 
     @Override
+    public int getBaseColumn() {
+        return baseCol;
+    }
+
+    @Override
     public List<Anno> getAnnotations() {
         return annotations;
+    }
+
+    public String getDoc() {
+        return doc;
     }
 
     @Override
@@ -176,6 +204,11 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
     @Override
     public int getAliasLine() {
         return aliasLine;
+    }
+
+    @Override
+    public int getAliasColumn() {
+        return aliasCol;
     }
 
     @Override
@@ -257,6 +290,9 @@ class DtoPropImpl<T extends BaseType, P extends BaseProp> implements DtoProp<T, 
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
+        if (doc != null) {
+            builder.append("@doc(").append(doc.replace("\n", "\\n")).append(')');
+        }
         if (mandatory == Mandatory.OPTIONAL) {
             builder.append("@optional ");
         } else if (mandatory == Mandatory.REQUIRED) {

@@ -1,19 +1,19 @@
 package org.babyfish.jimmer.internal;
 
-import org.babyfish.jimmer.error.CodeBasedRuntimeException;
+import org.babyfish.jimmer.error.CodeBasedException;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Retention(RetentionPolicy.SOURCE)
+@Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface ClientException {
 
-    String family();
+    String family() default "";
 
     String code() default "";
 
-    Class<? extends CodeBasedRuntimeException>[] subTypes() default {};
+    Class<?>[] subTypes() default {};
 }

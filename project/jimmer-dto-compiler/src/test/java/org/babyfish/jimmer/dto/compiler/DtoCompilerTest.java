@@ -7,7 +7,9 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringReader;
 import java.util.*;
 import java.util.function.Function;
@@ -525,6 +527,43 @@ public class DtoCompilerTest {
     }
 
     @Test
+    public void testDoc() {
+        List<DtoType<BaseType, BaseProp>> dtoTypes = MyDtoCompiler.treeNode(
+                "/**\n" +
+                        " * The recursive tree input\n" +
+                        " */\n" +
+                        "input TreeNodeInput {\n" +
+                        "    /**\n" +
+                        "     * The name of current tree node\n" +
+                        "     */\n" +
+                        "    name\n" +
+                        "    /**\n" +
+                        "     * The child nodes of current tree node\n" +
+                        "     */\n" +
+                        "    childNodes /** recursive childNodes */{\n" +
+                        "        name\n" +
+                        "    }*\n" +
+                        "}\n"
+        );
+        assertContentEquals(
+                "[" +
+                        "--->@doc(The recursive tree input)" +
+                        "--->input TreeNodeInput {" +
+                        "--->--->" +
+                        "--->--->@doc(The name of current tree node)" +
+                        "--->--->name, " +
+                        "--->--->@doc(The child nodes of current tree node)" +
+                        "--->--->@optional childNodes: @doc(recursive childNodes)input {" +
+                        "--->--->--->name, " +
+                        "--->--->--->@optional childNodes: ..." +
+                        "--->--->}*" +
+                        "--->}" +
+                        "]",
+                dtoTypes.toString()
+        );
+    }
+
+    @Test
     public void testIllegalPropertyName() {
         DtoAstException ex = Assertions.assertThrows(DtoAstException.class, () -> {
             MyDtoCompiler.book(
@@ -534,8 +573,10 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 2 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "There is no property \"city\" in \"org.babyfish.jimmer.sql.model.Book\" or its super types",
+                "/User/test/Book.dto:2 : There is no property \"city\" in " +
+                        "\"org.babyfish.jimmer.sql.model.Book\" or its super types\n" +
+                        "    city\n" +
+                        "    ^",
                 ex.getMessage()
         );
     }
@@ -550,8 +591,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 2 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "extraneous input '<' expecting Identifier",
+                "/User/test/Book.dto:2 : extraneous input '<' expecting Identifier\n" +
+                        "    #<allScalars>\n" +
+                        "     ^",
                 ex.getMessage()
         );
     }
@@ -567,8 +609,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 3 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Duplicated property alias \"id\"",
+                "/User/test/Book.dto:3 : Duplicated property alias \"id\"\n" +
+                        "    name as id\n" +
+                        "            ^",
                 ex.getMessage()
         );
     }
@@ -587,8 +630,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 5 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Duplicated property alias \"name\"",
+                "/User/test/Book.dto:5 : Duplicated property alias \"name\"\n" +
+                        "        name\n" +
+                        "        ^",
                 ex.getMessage()
         );
     }
@@ -605,8 +649,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 4 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Duplicated property alias \"myName\"",
+                "/User/test/Book.dto:4 : Duplicated property alias \"myName\"\n" +
+                        "    myName: String\n" +
+                        "    ^",
                 ex.getMessage()
         );
     }
@@ -624,8 +669,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 5 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Base property \"entity::authors\" cannot be referenced too many times",
+                "/User/test/Book.dto:5 : Base property \"entity::authors\" cannot be referenced too many times\n" +
+                        "    id(authors) as authorIds\n" +
+                        "       ^",
                 ex.getMessage()
         );
     }
@@ -640,8 +686,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 2 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Illegal property \"store\", the child body is required",
+                "/User/test/Book.dto:2 : Illegal property \"store\", the child body is required\n" +
+                        "    flat(store)\n" +
+                        "              ^",
                 ex.getMessage()
         );
     }
@@ -658,8 +705,10 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 2 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Illegal property \"store\", child body cannot be specified by it is id view property",
+                "/User/test/Book.dto:2 : Illegal property \"store\", " +
+                        "child body cannot be specified by it is id view property\n" +
+                        "    id(store) {\n" +
+                        "              ^",
                 ex.getMessage()
         );
     }
@@ -674,9 +723,10 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 2 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Cannot call the function \"id\" because the current " +
-                        "prop \"entity::name\" is not entity level association property",
+                "/User/test/Book.dto:2 : Cannot call the function \"id\" " +
+                        "because the current prop \"entity::name\" is not entity level association property\n" +
+                        "    id(name)\n" +
+                        "    ^",
                 ex.getMessage()
         );
     }
@@ -691,9 +741,11 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 2 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Cannot call the function \"flat\" " +
-                        "because the current prop \"entity::authors\" is list",
+                "/User/test/Book.dto:2 : Cannot call the function \"flat\" because " +
+                        "the current prop \"entity::authors\" is list and " +
+                        "the current dto type is not specification\n" +
+                        "    flat(authors)\n" +
+                        "    ^",
                 ex.getMessage()
         );
     }
@@ -709,9 +761,10 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 3 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Illegal required modifier '!' for non-id property, " +
-                        "the declared type is neither unsafe input nor specification",
+                "/User/test/Book.dto:3 : Illegal required modifier '!' for non-id property, " +
+                        "the declared type is neither unsafe input nor specification\n" +
+                        "    id(store)!\n" +
+                        "             ^",
                 ex.getMessage()
         );
     }
@@ -728,8 +781,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 4 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Illegal symbol \"*\", the property \"store\" is not recursive",
+                "/User/test/Book.dto:4 : Illegal symbol \"*\", the property \"store\" is not recursive\n" +
+                        "    }*\n" +
+                        "     ^",
                 ex.getMessage()
         );
     }
@@ -747,8 +801,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 5 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "Illegal symbol \"*\", the property \"store\" is not recursive",
+                "/User/test/Book.dto:5 : Illegal symbol \"*\", the property \"store\" is not recursive\n" +
+                        "    }*\n" +
+                        "     ^",
                 ex.getMessage()
         );
     }
@@ -766,8 +821,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 3 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "The alias cannot be specified when the function `flat` is used",
+                "/User/test/Book.dto:3 : The alias cannot be specified when the function `flat` is used\n" +
+                        "    flat(store) as parent {\n" +
+                        "                   ^",
                 ex.getMessage()
         );
     }
@@ -783,8 +839,9 @@ public class DtoCompilerTest {
             );
         });
         Assertions.assertEquals(
-                "Error at line 3 of \"<project>/src/main/dto/org/babyfish/jimmer/sql/model/Book.dto\": " +
-                        "There is no property alias \"tag\" that is need to be removed",
+                "/User/test/Book.dto:3 : There is no property alias \"tag\" that is need to be removed\n" +
+                        "-tag\n" +
+                        " ^",
                 ex.getMessage()
         );
     }
@@ -1003,11 +1060,14 @@ public class DtoCompilerTest {
             try {
                 return new MyDtoCompiler(
                         new DtoFile(
+                                new MockedOsFile(
+                                        "/User/test/Book.dto",
+                                        code
+                                ),
                                 "project",
                                 "src/main/dto",
                                 Arrays.asList("org", "babyfish", "jimmer", "sql", "model"),
-                                "Book.dto",
-                                () -> new StringReader(code)
+                                "Book.dto"
                         )
                 ).compile(BOOK_TYPE);
             } catch (IOException ex) {
@@ -1020,11 +1080,14 @@ public class DtoCompilerTest {
             try {
                 return new MyDtoCompiler(
                         new DtoFile(
+                                new MockedOsFile(
+                                        "/User/test/TreeNode.dto",
+                                        code
+                                ),
                                 "project",
                                 "src/main/dto",
                                 Arrays.asList("org", "babyfish", "jimmer", "sql", "model"),
-                                "TreeNode.dto",
-                                () -> new StringReader(code)
+                                "TreeNode.dto"
                         )
                 ).compile(TREE_NODE_TYPE);
             } catch (IOException ex) {
@@ -1080,6 +1143,28 @@ public class DtoCompilerTest {
             TYPE_MAP.put("Chapter", CHAPTER_TYPE);
             TYPE_MAP.put("TreeNode", TREE_NODE_TYPE);
             TYPE_MAP.put("User", USER_TYPE);
+        }
+    }
+
+    private static class MockedOsFile implements OsFile {
+
+        private final String absolutePath;
+
+        private final String content;
+
+        private MockedOsFile(String absolutePath, String content) {
+            this.absolutePath = absolutePath;
+            this.content = content;
+        }
+
+        @Override
+        public String getAbsolutePath() {
+            return absolutePath;
+        }
+
+        @Override
+        public Reader openReader() throws IOException {
+            return new StringReader(content);
         }
     }
 }

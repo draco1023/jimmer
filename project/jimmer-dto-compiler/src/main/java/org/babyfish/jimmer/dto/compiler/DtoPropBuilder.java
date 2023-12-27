@@ -16,9 +16,13 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
 
     private final int baseLine;
 
+    private final int baseCol;
+
     private final String alias;
 
     private final int aliasLine;
+
+    private final int aliasCol;
 
     private final List<Anno> annotations;
 
@@ -34,11 +38,16 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
 
     private final Set<LikeOption> likeOptions;
 
+    @Nullable
+    private String doc;
+
     DtoPropBuilder(
             DtoTypeBuilder<T, P> parent,
             P baseProp,
             int line,
-            Mandatory mandatory
+            int col,
+            Mandatory mandatory,
+            @Nullable String doc
     ) {
         this.parent = Objects.requireNonNull(parent, "parent cannot be null");
         this.basePropMap = Collections.singletonMap(
@@ -46,10 +55,12 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                 baseProp
         );
         this.aliasLine = line;
+        this.aliasCol = col;
         this.alias = parent.currentAliasGroup() != null ?
-                parent.currentAliasGroup().alias(baseProp.getName(), 0) :
+                parent.currentAliasGroup().alias(baseProp.getName(), 0, 0) :
                 baseProp.getName();
         this.baseLine = line;
+        this.baseCol = col;
         this.annotations = Collections.emptyList();
         if (mandatory == Mandatory.DEFAULT && parent.ctx.isImplicitId(baseProp, parent.modifiers)) {
             this.mandatory = Mandatory.OPTIONAL;
@@ -61,6 +72,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         this.enumType = null;
         this.recursive = false;
         this.likeOptions = Collections.emptySet();
+        this.doc = doc;
     }
 
     DtoPropBuilder(
@@ -69,7 +81,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
     ) {
         CompilerContext<T, P> ctx = parent.ctx;
         String funcName = null;
-        boolean isQbeFunc = false;
+        boolean isQbeFunc;
         Map<String, P> basePropMap = new LinkedHashMap<>();
         if (prop.func != null) {
             funcName = prop.func.getText();
@@ -77,6 +89,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (isQbeFunc && !parent.modifiers.contains(DtoTypeModifier.SPECIFICATION)) {
                 throw ctx.exception(
                         prop.func.getLine(),
+                        prop.func.getCharPositionInLine(),
                         "Illegal function \"" +
                                 funcName +
                                 "\", it can only be declared in specification"
@@ -85,6 +98,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (prop.props.size() > 1 && !Constants.MULTI_ARGS_FUNC_NAMES.contains(funcName)) {
                 throw ctx.exception(
                         prop.func.getLine(),
+                        prop.func.getCharPositionInLine(),
                         "Illegal function \"" +
                                 funcName +
                                 "\", it can not have multiple arguments, the functions support multiple arguments are " +
@@ -94,8 +108,9 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         }
         this.parent = Objects.requireNonNull(parent, "parent cannot be null");
         this.baseLine = prop.props.get(0).getLine();
-        this.aliasLine = prop.alias != null ? prop.alias.getLine() : prop.props.get(0).getLine();
-
+        this.baseCol = prop.props.get(0).getCharPositionInLine();
+        this.aliasLine = prop.alias != null ? prop.alias.getLine() : prop.props.get(prop.props.size() - 1).getLine();
+        this.aliasCol = prop.alias != null ? prop.alias.getCharPositionInLine() : prop.props.get(prop.props.size() - 1).getCharPositionInLine();
         Iterator<Token> itr = prop.props.iterator();
         P firstBaseProp = getBaseProp(parent, itr.next());
         basePropMap.put(firstBaseProp.getName(), firstBaseProp);
@@ -106,6 +121,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (conflictBaseProp != null) {
                 throw ctx.exception(
                         prop.func.getLine(),
+                        prop.func.getCharPositionInLine(),
                         "Illegal property \"" +
                                 baseProp.getName() +
                                 "\", it is duplicated"
@@ -114,6 +130,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (!ctx.isSameType(firstBaseProp, baseProp)) {
                 throw ctx.exception(
                         prop.func.getLine(),
+                        prop.func.getCharPositionInLine(),
                         "Illegal property \"" +
                                 baseProp.getName() +
                                 "\", its property type or converted type(From Converter<?, T>) is not same as the type of \"" +
@@ -129,6 +146,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (!"like".equals(funcName)) {
                 throw ctx.exception(
                         prop.flag.getLine(),
+                        prop.flag.getCharPositionInLine(),
                         "`/` can only be used to decorate the function `like`"
                 );
             }
@@ -136,6 +154,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                 if (!prop.insensitive.getText().equals("i")) {
                     throw ctx.exception(
                             prop.insensitive.getLine(),
+                            prop.insensitive.getCharPositionInLine(),
                             "Illegal function option identifier `" +
                                     prop.insensitive +
                                     "`, it can only be `i`"
@@ -164,6 +183,22 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             annotations = Collections.unmodifiableList(annotations);
         }
         this.annotations = annotations;
+        if (!this.annotations.isEmpty() && "flat".equals(funcName)) {
+            throw ctx.exception(
+                    prop.annotations.get(0).start.getLine(),
+                    prop.annotations.get(0).start.getCharPositionInLine(),
+                    "Illegal annotation, flat property does not accept annotations"
+            );
+        }
+
+        if (prop.doc != null && "flat".equals(funcName)) {
+            throw ctx.exception(
+                    prop.doc.getLine(),
+                    prop.doc.getCharPositionInLine(),
+                    "Illegal documentation comment, flat property does not accept documentation comments"
+            );
+        }
+        this.doc = Docs.parse(prop.doc);
 
         P baseProp = basePropMap.values().iterator().next();
 
@@ -173,6 +208,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (!baseProp.isAssociation(true)) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "Cannot call the function \"id\" because the current prop \"" +
                                         baseProp +
                                         "\" is not entity level association property"
@@ -181,6 +217,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (prop.alias == null && baseProp.isList()) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "The alias must be specified for the mapping property with function \"id\" because the current prop \"" +
                                         baseProp +
                                         "\" is list association"
@@ -192,6 +229,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (!baseProp.isAssociation(true)) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "Cannot call the function \"flat\" because the current prop \"" +
                                         baseProp +
                                         "\" is not association"
@@ -200,9 +238,10 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (baseProp.isList() && !parent.modifiers.contains(DtoTypeModifier.SPECIFICATION)) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "Cannot call the function \"flat\" because the current prop \"" +
                                         baseProp +
-                                        "\" is list"
+                                        "\" is list and the current dto type is not specification"
                         );
                     }
                     break;
@@ -210,6 +249,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (!ctx.isStringProp(baseProp)) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "Cannot call the function \"like\" because the current prop \"" +
                                         baseProp +
                                         "\" is not string"
@@ -227,6 +267,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (baseProp.isAssociation(true)) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "Cannot call the function \"" +
                                         funcName +
                                         "\" the current prop \"" +
@@ -240,6 +281,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     if (!baseProp.isAssociation(true)) {
                         throw ctx.exception(
                                 prop.func.getLine(),
+                                prop.func.getCharPositionInLine(),
                                 "Cannot call the function \"" + funcName + "\" because the current prop \"" +
                                         baseProp +
                                         "\" is not association"
@@ -252,6 +294,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                 default:
                     throw ctx.exception(
                             prop.func.getLine(),
+                            prop.func.getCharPositionInLine(),
                             "Illegal function name \"" +
                                     funcName +
                                     "\", " +
@@ -269,12 +312,14 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (parent.currentAliasGroup() != null) {
                 throw ctx.exception(
                         prop.alias.getLine(),
+                        prop.alias.getCharPositionInLine(),
                         "The alias cannot be specified in alias group"
                 );
             }
             if ("flat".equals(funcName)) {
                 throw ctx.exception(
                         prop.alias.getLine(),
+                        prop.alias.getCharPositionInLine(),
                         "The alias cannot be specified when the function `" + funcName + "` is used"
                 );
             }
@@ -283,6 +328,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (basePropMap.size() > 1) {
                 throw ctx.exception(
                         prop.props.get(prop.props.size() - 1).getLine(),
+                        prop.props.get(prop.props.size() - 1).getCharPositionInLine(),
                         "The alias must be specified when the function has multiple arguments"
                 );
             }
@@ -295,6 +341,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                         if (baseProp.isAssociation(true) && baseProp.isList()) {
                             throw ctx.exception(
                                     prop.props.get(0).getLine(),
+                                    prop.props.get(0).getCharPositionInLine(),
                                     "The alias must be specified for the property with " +
                                             "`id` function when the base property is list association"
                             );
@@ -310,6 +357,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     case "valueNotIn":
                         throw ctx.exception(
                                 prop.props.get(0).getLine(),
+                                prop.props.get(0).getCharPositionInLine(),
                                 "The alias must be specified for `" +
                                         funcName +
                                         "` function"
@@ -348,6 +396,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                         if (baseProp.isAssociation(true) && baseProp.isList()) {
                             throw ctx.exception(
                                     prop.props.get(0).getLine(),
+                                    prop.props.get(0).getCharPositionInLine(),
                                     "The alias must be specified for `associatedIdIn` function when base property is list"
                             );
                         }
@@ -357,6 +406,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                         if (baseProp.isAssociation(true) && baseProp.isList()) {
                             throw ctx.exception(
                                     prop.props.get(0).getLine(),
+                                    prop.props.get(0).getCharPositionInLine(),
                                     "The alias must be specified for `associatedIdIn` function when base property is list"
                             );
                         }
@@ -366,6 +416,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                         if (baseProp.isAssociation(true) && baseProp.isList()) {
                             throw ctx.exception(
                                     prop.props.get(0).getLine(),
+                                    prop.props.get(0).getCharPositionInLine(),
                                     "The alias must be specified for `associatedIdNotIn` function when base property is list"
                             );
                         }
@@ -380,25 +431,29 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
 
         if (parent.currentAliasGroup() != null) {
             int line = prop.alias != null ? prop.alias.getLine() : prop.props.get(prop.props.size() - 1).getLine();
-            alias = parent.currentAliasGroup().alias(alias != null ? alias : prop.props.get(prop.props.size() - 1).getText(), line);
+            int col = prop.alias != null ? prop.alias.getCharPositionInLine() : prop.props.get(prop.props.size() - 1).getCharPositionInLine();
+            alias = parent.currentAliasGroup().alias(alias != null ? alias : prop.props.get(prop.props.size() - 1).getText(), line, col);
         }
 
         if (prop.optional != null) {
             if (parent.modifiers.contains(DtoTypeModifier.SPECIFICATION)) {
                 throw ctx.exception(
                         prop.optional.getLine(),
+                        prop.optional.getCharPositionInLine(),
                         "Unnecessary optional modifier '?', all properties of specification are automatically optional"
                 );
             }
             if ("flat".equals(funcName)) {
                 throw ctx.exception(
                         prop.optional.getLine(),
+                        prop.optional.getCharPositionInLine(),
                         "Illegal optional modifier '?', it is not allowed for the function `flat`"
                 );
             }
             if (baseProp.isNullable()) {
                 throw ctx.exception(
                         prop.optional.getLine(),
+                        prop.optional.getCharPositionInLine(),
                         "Illegal optional modifier '?' because the base property is already nullable"
                 );
             }
@@ -406,6 +461,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             while (nullableFlatParent != null) {
                 throw ctx.exception(
                         prop.optional.getLine(),
+                        prop.optional.getCharPositionInLine(),
                         "Illegal optional modifier '?' because the flat parent property \"" +
                                 nullableFlatParent.basePropMap.values().iterator().next() +
                                 "\" is already nullable"
@@ -416,6 +472,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if ("flat".equals(funcName)) {
                 throw ctx.exception(
                         prop.required.getLine(),
+                        prop.required.getCharPositionInLine(),
                         "Illegal required modifier '!', it is not allowed for the function `flat`"
                 );
             }
@@ -424,6 +481,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                         !parent.modifiers.contains(DtoTypeModifier.SPECIFICATION)) {
                     throw ctx.exception(
                             prop.required.getLine(),
+                            prop.required.getCharPositionInLine(),
                             "Illegal required modifier '!' for id property, " +
                                     "the declared type is neither input nor specification"
                     );
@@ -433,6 +491,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                 !parent.modifiers.contains(DtoTypeModifier.UNSAFE)) {
                     throw ctx.exception(
                             prop.required.getLine(),
+                            prop.required.getCharPositionInLine(),
                             "Illegal required modifier '!' for non-id property, " +
                                     "the declared type is neither unsafe input nor specification"
                     );
@@ -440,6 +499,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                 if (!baseProp.isNullable() && getNullableFlatParent() == null) {
                     throw ctx.exception(
                             prop.required.getLine(),
+                            prop.required.getCharPositionInLine(),
                             "Illegal required modifier '!' because the base property is already nonnull"
                     );
                 }
@@ -450,6 +510,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (!baseProp.isRecursive()) {
                 throw ctx.exception(
                         prop.recursive.getLine(),
+                        prop.recursive.getCharPositionInLine(),
                         "Illegal symbol \"" +
                                 prop.recursive.getText() +
                                 "\", the property \"" +
@@ -460,6 +521,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if ("flat".equals(funcName)) {
                 throw ctx.exception(
                         prop.recursive.getLine(),
+                        prop.recursive.getCharPositionInLine(),
                         "Illegal symbol \"" +
                                 prop.recursive.getText() +
                                 "\", the flat property \"" +
@@ -470,6 +532,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (prop.required != null) {
                 throw ctx.exception(
                         prop.recursive.getLine(),
+                        prop.recursive.getCharPositionInLine(),
                         "Illegal symbol \"" +
                                 prop.recursive.getText() +
                                 "\", the required property \"" +
@@ -485,6 +548,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (!baseProp.isAssociation(true)) {
                 throw ctx.exception(
                         dtoBody.start.getLine(),
+                        dtoBody.start.getCharPositionInLine(),
                         "Illegal property \"" +
                                 baseProp.getName() +
                                 "\", child body cannot be specified by it is not association"
@@ -493,6 +557,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if ("id".equals(funcName)) {
                 throw ctx.exception(
                         dtoBody.start.getLine(),
+                        dtoBody.start.getCharPositionInLine(),
                         "Illegal property \"" +
                                 baseProp.getName() +
                                 "\", child body cannot be specified by it is id view property"
@@ -504,6 +569,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                     dtoBody,
                     null,
                     prop.annotations,
+                    Docs.parse(prop.childDoc),
                     parent.modifiers.contains(DtoTypeModifier.INPUT) ?
                             Collections.singleton(DtoTypeModifier.INPUT) :
                             parent.modifiers.contains(DtoTypeModifier.SPECIFICATION) ?
@@ -519,6 +585,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
                 !"associatedIdNotIn".equals(funcName)) {
             throw ctx.exception(
                     prop.stop.getLine(),
+                    prop.stop.getCharPositionInLine(),
                     "Illegal property \"" +
                             baseProp.getName() +
                             "\", the child body is required"
@@ -531,6 +598,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (constants == null || constants.isEmpty()) {
                 throw ctx.exception(
                         enumBody.start.getLine(),
+                        enumBody.start.getCharPositionInLine(),
                         "Illegal property \"" +
                                 baseProp.getName() +
                                 "\", enum body cannot be specified by it is not enum property"
@@ -580,6 +648,11 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         return baseLine;
     }
 
+    @Override
+    public int getBaseColumn() {
+        return baseCol;
+    }
+
     @Nullable
     @Override
     public String getAlias() {
@@ -589,6 +662,11 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
     @Override
     public int getAliasLine() {
         return aliasLine;
+    }
+
+    @Override
+    public int getAliasColumn() {
+        return aliasCol;
     }
 
     @Override
@@ -606,6 +684,11 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         return annotations;
     }
 
+    @Override
+    public String getDoc() {
+        return doc;
+    }
+
     public DtoTypeBuilder<T, P> getTargetBuilder() {
         return targetTypeBuilder;
     }
@@ -619,6 +702,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         if (recursiveBaseProp != null && token.getText().equals(recursiveBaseProp.getName())) {
             throw ctx.exception(
                     token.getLine(),
+                    token.getCharPositionInLine(),
                     "The property \"" +
                             token.getText() +
                             "\" cannot be specified because it is implicit recursive association"
@@ -630,6 +714,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         if (baseProp == null) {
             throw ctx.exception(
                     token.getLine(),
+                    token.getCharPositionInLine(),
                     "There is no property \"" + baseName + "\" in \"" +
                             baseType.getQualifiedName() +
                             "\" or its super types"
@@ -639,6 +724,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         if (baseProp.isFormula() && isInput) {
             throw ctx.exception(
                     token.getLine(),
+                    token.getCharPositionInLine(),
                     "The property \"" +
                             baseProp.getName() +
                             "\" cannot be declared in input dto because it is formula"
@@ -647,6 +733,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         if (baseProp.getManyToManyViewBaseProp() != null && isInput) {
             throw ctx.exception(
                     token.getLine(),
+                    token.getCharPositionInLine(),
                     "The property \"" +
                             baseProp.getName() +
                             "\" cannot be declared in input dto because it is many-to-many-view"
@@ -656,6 +743,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             if (isInput) {
                 throw ctx.exception(
                         token.getLine(),
+                        token.getCharPositionInLine(),
                         "The property \"" +
                                 baseProp.getName() +
                                 "\" cannot be declared in input dto because it is transient"
@@ -663,6 +751,7 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
             } else if (!baseProp.hasTransientResolver()) {
                 throw ctx.exception(
                         token.getLine(),
+                        token.getCharPositionInLine(),
                         "The property \"" +
                                 baseProp.getName() +
                                 "\" cannot be declared in dto because it is transient " +
@@ -689,9 +778,12 @@ class DtoPropBuilder<T extends BaseType, P extends BaseProp> implements DtoPropI
         return new DtoPropImpl<>(
                 basePropMap,
                 baseLine,
+                baseCol,
                 alias,
                 aliasLine,
+                aliasCol,
                 annotations,
+                doc,
                 targetTypeBuilder != null ? targetTypeBuilder.build() : null,
                 enumType,
                 mandatory,

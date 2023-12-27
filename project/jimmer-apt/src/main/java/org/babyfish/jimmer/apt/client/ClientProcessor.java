@@ -1,10 +1,13 @@
 package org.babyfish.jimmer.apt.client;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonValue;
 import org.babyfish.jimmer.Immutable;
 import org.babyfish.jimmer.apt.Context;
 import org.babyfish.jimmer.apt.GeneratorException;
 import org.babyfish.jimmer.apt.MetaException;
 import org.babyfish.jimmer.apt.immutable.generator.Annotations;
+import org.babyfish.jimmer.apt.util.ConverterMetadata;
 import org.babyfish.jimmer.apt.util.GenericParser;
 import org.babyfish.jimmer.client.*;
 import org.babyfish.jimmer.client.meta.*;
@@ -41,6 +44,8 @@ public class ClientProcessor {
 
     private final Context context;
 
+    private final ClientExceptionContext clientExceptionContext;
+
     private final Elements elements;
 
     private final Collection<String> delayedClientTypeNames;
@@ -51,8 +56,11 @@ public class ClientProcessor {
 
     private final SchemaBuilder<Element> builder;
 
+    private final Set<TypeName> jsonValueTypeNameStack = new HashSet<>();
+
     public ClientProcessor(Context context, Elements elements, Filer filer, boolean explicitApi, Collection<String> delayedClientTypeNames) {
         this.context = context;
+        this.clientExceptionContext = new ClientExceptionContext(context);
         this.elements = elements;
         this.explicitApi = explicitApi;
         this.delayedClientTypeNames = delayedClientTypeNames;
@@ -145,7 +153,7 @@ public class ClientProcessor {
             );
         }
         SchemaImpl<Element> schema = builder.current();
-        builder.api(typeElement, typeElement.getQualifiedName().toString(), apiService -> {
+        builder.api(typeElement, typeName(typeElement), apiService -> {
             Api api = typeElement.getAnnotation(Api.class);
             if (api != null) {
                 apiService.setGroups(Arrays.asList(api.value()));
@@ -212,8 +220,10 @@ public class ClientProcessor {
                 operation.setGroups(groups);
             }
             operation.setDoc(Doc.parse(elements.getDocComment(method)));
+            int[] indexRef = new int[1];
             for (VariableElement parameterElement : method.getParameters()) {
                 builder.parameter(parameterElement, parameterElement.getSimpleName().toString(), parameter -> {
+                    parameter.setOriginalIndex(indexRef[0]++);
                     if (Annotations.annotationMirror(parameterElement, ApiIgnore.class) != null) {
                         operation.addIgnoredParameter(parameter);
                     } else {
@@ -243,86 +253,33 @@ public class ClientProcessor {
         }
         Set<TypeName> exceptionTypeNames = new LinkedHashSet<>();
         for (TypeMirror type : exceptionTypes) {
-            TypeElement typeElement = (TypeElement)context.getTypes().asElement(type);
-            collectExceptionTypeNames(typeElement, exceptionTypeNames);
+            TypeElement typeElement = (TypeElement) context.getTypes().asElement(type);
+            if (typeElement.getAnnotation(ClientException.class) != null) {
+                collectExceptionTypeNames(clientExceptionContext.get(typeElement), exceptionTypeNames);
+            }
         }
         return exceptionTypeNames;
     }
 
-    private void collectExceptionTypeNames(TypeElement typeElement, Set<TypeName> exceptionTypeNames) {
-        TypeName typeName = typeName(typeElement);
-        if (exceptionTypeNames.contains(typeName)) {
-            return;
+    private void collectExceptionTypeNames(ClientExceptionMetadata metadata, Set<TypeName> exceptionTypeNames) {
+        if (metadata.getCode() != null) {
+            exceptionTypeNames.add(typeName(metadata.getElement()));
         }
-        AnnotationMirror clientException = Annotations.annotationMirror(typeElement, ClientException.class);
-        if (clientException == null) {
-            return;
-        }
-        String code = Annotations.annotationValue(clientException, "code", "");
-        List<Object> subTypes = Annotations.annotationValue(clientException, "subTypes", Collections.emptyList());
-        if (code.isEmpty() && subTypes.isEmpty()) {
-            throw new MetaException(
-                    typeElement,
-                    "Illegal client exception, neither `code` nor `subTypes` of the annotation \"@" +
-                            ClientException.class.getName() +
-                            "\" is specified"
-            );
-        }
-        if (!code.isEmpty() && !subTypes.isEmpty()) {
-            throw new MetaException(
-                    typeElement,
-                    "Illegal client exception, both `code` and `subTypes` of the annotation \"@" +
-                            ClientException.class.getName() +
-                            "\" is specified"
-            );
-        }
-        if (!code.isEmpty()) {
-            exceptionTypeNames.add(typeName);
-        } else {
-            for (Object subType : subTypes) {
-                String qualifiedName = subType.toString();
-                if (qualifiedName.endsWith(".class")) {
-                    qualifiedName = qualifiedName.substring(0, qualifiedName.length() - 6);
-                }
-                TypeElement subTypeElement = context.getElements().getTypeElement(qualifiedName);
-                if (subTypeElement == null) {
-                    throw new MetaException(
-                            typeElement,
-                            "Illegal client exception, the sub type \"" +
-                                    qualifiedName +
-                                    "\" of annotation \"@" +
-                                    ClientException.class.getName() +
-                                    "\" is not a class"
-                    );
-                }
-                collectExceptionTypeNames(subTypeElement, exceptionTypeNames);
-            }
+        for (ClientExceptionMetadata subMetadata : metadata.getSubMetdatas()) {
+            collectExceptionTypeNames(subMetadata, exceptionTypeNames);
         }
      }
 
     private void fillType(TypeMirror type) {
         if (type.getKind() != TypeKind.VOID) {
-            determineNullity(type);
-            determineFetchBy(type);
-            determineTypeAndArguments(type);
-        }
-    }
-
-    private void determineNullity(TypeMirror type) {
-        TypeRefImpl<Element> typeRef = builder.current();
-        if (type.getAnnotation(NullableType.class) != null) {
-            typeRef.setNullable(true);
-        } else {
-            Element element = builder.ancestorSource(PropImpl.class, ApiParameterImpl.class, ApiOperationImpl.class);
-            if (element != null) {
-                for (AnnotationMirror annotationMirror : element.getAnnotationMirrors()) {
-                    TypeElement annoElement = (TypeElement) annotationMirror.getAnnotationType().asElement();
-                    String annoClassName = annoElement.getSimpleName().toString();
-                    if (annoClassName.equals("Null") || annoClassName.equals("Nullable")) {
-                        typeRef.setNullable(true);
-                        break;
-                    }
-                }
+            TypeRefImpl<Element> typeRef = builder.current();
+            try {
+                determineTypeAndArguments(type);
+                determineNullity(type);
+                determineFetchBy(type);
+                removeOptional(typeRef);
+            } catch (JsonValueTypeChangeException ex) {
+                typeRef.replaceBy(ex.typeRef, typeRef.isNullable() || ex.typeRef.isNullable());
             }
         }
     }
@@ -337,7 +294,7 @@ public class ClientProcessor {
         if (fetchBy == null) {
             return;
         }
-        if (!context.isImmutable(entityType)) {
+        if (!context.isEntity(entityType)) {
             throw new MetaException(
                     builder.ancestorSource(ApiOperationImpl.class, ApiParameterImpl.class),
                     builder.ancestorSource(),
@@ -397,7 +354,7 @@ public class ClientProcessor {
                         "fetcher",
                         element,
                         "org.babyfish.jimmer.sql.fetcher.Fetcher"
-                ).parse().get(0).toString();
+                ).parse().argumentTypeNames.get(0).toString();
             } else {
                 if (!element.getQualifiedName().toString().equals("org.babyfish.jimmer.sql.fetcher.Fetcher")) {
                     throw new MetaException(
@@ -427,6 +384,47 @@ public class ClientProcessor {
 
         typeRef.setFetchBy(constant);
         typeRef.setFetcherOwner(typeName(ownerElement));
+        typeRef.setFetcherDoc(Doc.parse(context.getElements().getDocComment(fetcherElement)));
+    }
+
+    private void determineNullity(TypeMirror type) {
+        TypeRefImpl<Element> typeRef = builder.current();
+        Boolean forcedType = null;
+        if (typeRef.getTypeName().isPrimitive()) {
+            forcedType = context.getTypes().asElement(type) != null;
+        }
+        if (type.getAnnotation(NullableType.class) != null) {
+            if (forcedType != null && !forcedType) {
+                throw new MetaException(
+                        builder.ancestorSource(),
+                        "Illegal annotation `@NullableType` which cannot be used to decorate primitive type"
+                );
+            }
+            typeRef.setNullable(true);
+        } else {
+            Element element = builder.ancestorSource(PropImpl.class, ApiParameterImpl.class, ApiOperationImpl.class);
+            if (element != null) {
+                for (AnnotationMirror annotationMirror : element.getAnnotationMirrors()) {
+                    TypeElement annoElement = (TypeElement) annotationMirror.getAnnotationType().asElement();
+                    String annoClassName = annoElement.getSimpleName().toString();
+                    if (annoClassName.equals("Null") || annoClassName.equals("Nullable")) {
+                        if (forcedType != null && !forcedType) {
+                            throw new MetaException(
+                                    builder.ancestorSource(),
+                                    "Illegal annotation `@" +
+                                            annoElement.getQualifiedName().toString() +
+                                            "` which cannot be used to decorate primitive type"
+                            );
+                        }
+                        typeRef.setNullable(true);
+                        break;
+                    }
+                }
+            }
+        }
+        if (forcedType != null && forcedType) {
+            typeRef.setNullable(true);
+        }
     }
 
     private void determineTypeAndArguments(TypeMirror type) {
@@ -465,7 +463,7 @@ public class ClientProcessor {
                 handleWildcardType((WildcardType) type);
                 break;
             case INTERSECTION:
-                handleIntersectionTpe((IntersectionType) type);
+                handleIntersectionType((IntersectionType) type);
                 break;
             case ARRAY:
                 handleArrayType((ArrayType) type);
@@ -499,7 +497,7 @@ public class ClientProcessor {
         fillType(typeMirror);
     }
 
-    private void handleIntersectionTpe(IntersectionType intersectionType) {
+    private void handleIntersectionType(IntersectionType intersectionType) {
         fillType(intersectionType.getBounds().get(0));
     }
 
@@ -538,8 +536,39 @@ public class ClientProcessor {
                     "Client API system does not accept unambiguous type `java.lang.Object`"
             );
         }
-        typeRef.setTypeName(typeName);
+        switch (typeName.toString()) {
+            case "java.lang.Boolean":
+                typeName = TypeName.BOOLEAN;
+                break;
+            case "java.lang.Character":
+                typeName = TypeName.CHAR;
+                break;
+            case "java.lang.Byte":
+                typeName = TypeName.BYTE;
+                break;
+            case "java.lang.Short":
+                typeName = TypeName.SHORT;
+                break;
+            case "java.lang.Integer":
+                typeName = TypeName.INT;
+                break;
+            case "java.lang.Long":
+                typeName = TypeName.LONG;
+                break;
+            case "java.lang.Float":
+                typeName = TypeName.FLOAT;
+                break;
+            case "java.lang.Double":
+                typeName = TypeName.DOUBLE;
+                break;
+        }
 
+        TypeRefImpl<Element> jsonValueTypeRef = jsonValueTypeRef(typeName);
+        if (jsonValueTypeRef != null) {
+            throw new JsonValueTypeChangeException(jsonValueTypeRef);
+        }
+
+        typeRef.setTypeName(typeName);
         for (TypeMirror typeMirror : declaredType.getTypeArguments()) {
             builder.typeRef(argument -> {
                 fillType(typeMirror);
@@ -548,14 +577,55 @@ public class ClientProcessor {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private TypeRefImpl<Element> jsonValueTypeRef(TypeName typeName) {
+        TypeElement typeElement = context.getElements().getTypeElement(typeName.toString());
+        for (Element element : typeElement.getEnclosedElements()) {
+            if (element.getAnnotation(JsonValue.class) == null) {
+                continue;
+            }
+            if (element.getKind() != ElementKind.METHOD || element.getModifiers().contains(Modifier.STATIC)) {
+                continue;
+            }
+            ExecutableElement methodElement = (ExecutableElement) element;
+            if (!methodElement.getParameters().isEmpty() || methodElement.getReturnType().getKind() == TypeKind.VOID) {
+                continue;
+            }
+            if (!jsonValueTypeNameStack.add(typeName)) {
+                throw new MetaException(
+                        builder.ancestorSource(ApiOperationImpl.class, ApiParameterImpl.class),
+                        builder.ancestorSource(),
+                        "Cannot resolve \"@" +
+                                JsonValue.class.getName() +
+                                "\" because of dead recursion: " +
+                                jsonValueTypeNameStack
+                );
+            }
+            try {
+                TypeRefImpl<Element>[] jsonValueTypRef = (TypeRefImpl<Element>[]) new TypeRefImpl[1];
+                builder.typeRef(type -> {
+                    fillType(methodElement.getReturnType());
+                    jsonValueTypRef[0] = type;
+                });
+                return jsonValueTypRef[0];
+            } finally {
+                jsonValueTypeNameStack.remove(typeName);
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
     private void fillDefinition(TypeElement typeElement, boolean immutable) {
+
+        TypeDefinitionImpl<Element> typeDefinition = builder.current();
+        typeDefinition.setDoc(Doc.parse(context.getElements().getDocComment(typeElement)));
 
         if (typeElement.getKind() == ElementKind.ENUM) {
             fillEnumDefinition(typeElement);
             return;
         }
 
-        TypeDefinitionImpl<Element> typeDefinition = builder.current();
         typeDefinition.setApiIgnore(typeElement.getAnnotation(ApiIgnore.class) != null);
         if (immutable) {
             typeDefinition.setKind(TypeDefinition.Kind.IMMUTABLE);
@@ -564,6 +634,7 @@ public class ClientProcessor {
         }
 
         if (!immutable || typeElement.getKind() == ElementKind.INTERFACE) {
+            boolean isClientException = typeElement.getAnnotation(ClientException.class) != null;
             for (Element element : typeElement.getEnclosedElements()) {
                 if (!(element instanceof ExecutableElement)) {
                     continue;
@@ -573,7 +644,9 @@ public class ClientProcessor {
                         executableElement.getModifiers().contains(Modifier.STATIC) ||
                         !executableElement.getModifiers().contains(Modifier.PUBLIC) ||
                         executableElement.getReturnType().getKind() == TypeKind.VOID ||
-                        executableElement.getAnnotation(ApiIgnore.class) != null) {
+                        executableElement.getAnnotation(ApiIgnore.class) != null ||
+                        executableElement.getAnnotation(JsonIgnore.class) != null
+                ) {
                     continue;
                 }
                 String name = executableElement.getSimpleName().toString();
@@ -591,10 +664,23 @@ public class ClientProcessor {
                         continue;
                     }
                 }
+                if (isClientException && (name.equals("code") || name.equals("fields"))) {
+                    continue;
+                }
+                ConverterMetadata metadata;
+                if (immutable) {
+                    metadata = context
+                            .getImmutableType(typeElement)
+                            .getProps()
+                            .get(name)
+                            .getConverterMetadata();
+                } else {
+                    metadata = null;
+                }
                 builder.prop(executableElement, name, prop -> {
                     try {
                         builder.typeRef(type -> {
-                            fillType(executableElement.getReturnType());
+                            fillType(metadata != null ? metadata.getTargetType() : executableElement.getReturnType());
                             prop.setType(type);
                         });
                         prop.setDoc(Doc.parse(elements.getDocComment(executableElement)));
@@ -604,16 +690,34 @@ public class ClientProcessor {
                     }
                 });
             }
+            for (Element fieldElement : typeElement.getEnclosedElements()) {
+                if (fieldElement.getKind() != ElementKind.FIELD || fieldElement.getModifiers().contains(Modifier.STATIC)) {
+                    continue;
+                }
+                PropImpl<Element> prop = (PropImpl<Element>) typeDefinition.getPropMap().get(fieldElement.getSimpleName().toString());
+                if (prop == null) {
+                    continue;
+                }
+                if (fieldElement.getAnnotation(JsonIgnore.class) != null) {
+                    typeDefinition.getPropMap().remove(fieldElement.getSimpleName().toString());
+                }
+                if (prop.getDoc() == null) {
+                    prop.setDoc(Doc.parse(context.getElements().getDocComment(fieldElement)));
+                }
+            }
         }
 
         ClientException clientException = typeElement.getAnnotation(ClientException.class);
-        if (clientException != null && !clientException.family().isEmpty() && !clientException.code().isEmpty()) {
-            typeDefinition.setError(
-                    new TypeDefinition.Error(
-                            clientException.family(),
-                            clientException.code()
-                    )
-            );
+        if (clientException != null) {
+            ClientExceptionMetadata metadata = clientExceptionContext.get(typeElement);
+            if (metadata.getCode() != null && !metadata.getCode().isEmpty()) {
+                typeDefinition.setError(
+                        new TypeDefinition.Error(
+                                metadata.getFamily(),
+                                metadata.getCode()
+                        )
+                );
+            }
         }
 
         if (typeElement.getKind() == ElementKind.CLASS || typeElement.getKind() == ElementKind.INTERFACE) {
@@ -650,6 +754,16 @@ public class ClientProcessor {
         TypeDefinitionImpl<Element> definition = builder.current();
         definition.setApiIgnore(typeElement.getAnnotation(ApiIgnore.class) != null);
         definition.setKind(TypeDefinition.Kind.ENUM);
+
+        for (Element constantElement : typeElement.getEnclosedElements()) {
+            if (constantElement.getKind() != ElementKind.ENUM_CONSTANT) {
+                continue;
+            }
+            builder.constant(constantElement, constantElement.getSimpleName().toString(), constant -> {
+                constant.setDoc(Doc.parse(context.getElements().getDocComment(constantElement)));
+                definition.addEnumConstant(constant);
+            });
+        }
     }
 
     public boolean isApiService(Element element) {
@@ -731,10 +845,27 @@ public class ClientProcessor {
         return TypeName.of(packageName, simpleNames);
     }
 
+    @SuppressWarnings("unchecked")
+    private static void removeOptional(TypeRefImpl<Element> typeRef) {
+        if (typeRef.getTypeName().equals(TypeName.OPTIONAL)) {
+            TypeRefImpl<Element> target = (TypeRefImpl<Element>) typeRef.getArguments().get(0);
+            typeRef.replaceBy(target, true);
+        }
+    }
+
     private static class UnambiguousTypeException extends MetaException {
 
         public UnambiguousTypeException(Element element, Element childElement, String reason) {
             super(element, childElement, reason);
+        }
+    }
+
+    private static class JsonValueTypeChangeException extends RuntimeException {
+
+        final TypeRefImpl<Element> typeRef;
+
+        private JsonValueTypeChangeException(TypeRefImpl<Element> typeRef) {
+            this.typeRef = typeRef;
         }
     }
 }
