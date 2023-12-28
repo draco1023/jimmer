@@ -1,12 +1,8 @@
-import type { Gender } from '../enums';
+import type {Gender} from '../enums/';
 
 export interface AuthorInput {
-    
+    readonly id: number | null | undefined;
     readonly firstName: string;
-    
-    readonly gender: Gender;
-    
-    readonly id?: number;
-    
     readonly lastName: string;
+    readonly gender: Gender;
 }
