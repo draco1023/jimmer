@@ -71,7 +71,6 @@ tasks.withType<JavaCompile> {
      * when using @ConstructorBinding in Spring Native Image
      */
     options.compilerArgs.add("-parameters")
-    options.compilerArgs.add("-Ajimmer.dto.dirs=src/test/dto")
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
@@ -83,7 +82,6 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 
 ksp {
     arg("jimmer.source.excludes", "org.babyfish.jimmer.spring.java")
-    arg("jimmer.dto.dirs", "src/test/dto")
 }
 
 // Publish to maven-----------------------------------------------------
