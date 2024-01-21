@@ -1,5 +1,5 @@
 plugins {
-    id("java")
+    `java-library`
     id("maven-publish")
     id("signing")
 }
@@ -9,6 +9,17 @@ repositories {
 }
 
 dependencies {
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType<Javadoc>{
+    options.encoding = "UTF-8"
 }
 
 // Publish to maven-----------------------------------------------------
