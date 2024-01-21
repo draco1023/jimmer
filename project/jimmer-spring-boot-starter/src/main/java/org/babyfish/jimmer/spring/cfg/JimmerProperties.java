@@ -16,7 +16,6 @@ import org.springframework.boot.context.properties.ConstructorBinding;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
-import java.util.Collections;
 
 @ConstructorBinding
 @ConfigurationProperties("jimmer")
@@ -215,7 +214,7 @@ public class JimmerProperties {
             this.errorTranslator = errorTranslator;
         }
         if (client == null) {
-            this.client = new Client(null, null);
+            this.client = new Client(null, null, null);
         } else {
             this.client = client;
         }
@@ -484,15 +483,19 @@ public class JimmerProperties {
     @ConstructorBinding
     public static class Client {
 
+        @Nullable
+        private final String uriPrefix;
+
         @NotNull
         private final TypeScript ts;
 
         @NotNull
         private final Openapi openapi;
 
-        public Client(@Nullable TypeScript ts, @Nullable Openapi openapi) {
+        public Client(@Nullable String uriPrefix, @Nullable TypeScript ts, @Nullable Openapi openapi) {
+            this.uriPrefix = uriPrefix;
             if (ts == null) {
-                this.ts = new TypeScript(null, "Api", 4, false, null);
+                this.ts = new TypeScript(null, "Api", 4, false, null, false);
             } else {
                 this.ts = ts;
             }
@@ -501,6 +504,11 @@ public class JimmerProperties {
             } else {
                 this.openapi = openapi;
             }
+        }
+
+        @Nullable
+        public String getUriPrefix() {
+            return uriPrefix;
         }
 
         @NotNull
@@ -536,12 +544,15 @@ public class JimmerProperties {
 
             private final NullRenderMode nullRenderMode;
 
+            private final boolean isEnumTsStyle;
+
             public TypeScript(
                     @Nullable String path,
                     @Nullable String apiName,
                     int indent,
                     boolean mutable,
-                    @Nullable NullRenderMode nullRenderMode
+                    @Nullable NullRenderMode nullRenderMode,
+                    boolean isEnumTsStyle
             ) {
                 if (path == null || path.isEmpty()) {
                     this.path = null;
@@ -559,6 +570,7 @@ public class JimmerProperties {
                 this.indent = indent != 0 ? Math.max(indent, 2) : 4;
                 this.mutable = mutable;
                 this.nullRenderMode = nullRenderMode != null ? nullRenderMode : NullRenderMode.UNDEFINED;
+                this.isEnumTsStyle = isEnumTsStyle;
             }
 
             @Nullable
@@ -581,6 +593,10 @@ public class JimmerProperties {
 
             public NullRenderMode getNullRenderMode() {
                 return nullRenderMode;
+            }
+
+            public boolean isEnumTsStyle() {
+                return isEnumTsStyle;
             }
 
             @Override
